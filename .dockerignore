@@ -1,0 +1,15 @@
+.git
+node_modules
+server/node_modules
+.next
+dist
+server/dist
+test-results
+coverage
+playwright-report
+e2e
+AGENTS
+npm-debug.log
+.DS_Store
+maps/*
+!maps/metadata.json

@@ -1,0 +1,28 @@
+# Kernel Virtual Tabletop — Agent Guide
+Brief context for assistants working in this repo.
+
+## Stack & layout
+- Next.js 16 (App Router) with React 19 + TypeScript.
+- Entry: `src/app/page.tsx`; shared styles in `globals.css`, view styles in `views.module.css`.
+- WebSocket server in `server/` (TypeScript, ws). Shared types in `types/`.
+- Data directories: `maps/`, `artwork/`; grid metadata in `maps/metadata.json` (all gitignored).
+
+## Key behaviors
+- DM view controls map/artwork selection, grid config (with calibration overlay), grid visibility, and the red lens that drives the Table viewport. Connection banner clears on pong.
+- Table view renders the pushed viewport and optional artwork overlay.
+- Calibration: two clicks set grid size/origin; cursor switches to crosshair when active.
+
+## Commands
+- App: `npm run dev` (WS URL builds from host/8081 unless `NEXT_PUBLIC_WS_URL` is set).
+- WS server: `cd server && npm install && npm run dev` (defaults to 8081).
+- Lint/tests: `npm run lint`, `npm run test`, `npm run test:coverage`.
+- E2E: `npm run e2e` (install browsers first: `npx playwright install --with-deps`).
+- Docker: `docker compose up -d --build` (app 3000, WS 8081).
+
+## CI
+GitHub Actions (`.github/workflows/ci.yml`) runs lint + unit/coverage, then Playwright against a built app on push/PR to main/master.
+
+## Conventions
+- Keep edits ASCII unless file already differs.
+- Prefer `rg` for search; use `apply_patch` for small edits.
+- Avoid destructive git commands; respect existing user changes.
