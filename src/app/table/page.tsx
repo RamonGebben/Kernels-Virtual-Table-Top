@@ -7,16 +7,18 @@ import styles from '../views.module.css';
 import { useSessionState } from '@/hooks/useSessionState';
 
 const TablePage = () => {
-  const { session, sendTableSize, connectionLost } = useSessionState('table');
+  const { session, sendTableSize, connectionLost, connected } =
+    useSessionState('table');
 
   useEffect(() => {
     const sendSize = () => {
       sendTableSize({ width: window.innerWidth, height: window.innerHeight });
     };
+    if (!connected) return undefined;
     sendSize();
     window.addEventListener('resize', sendSize);
     return () => window.removeEventListener('resize', sendSize);
-  }, [sendTableSize]);
+  }, [sendTableSize, connected]);
 
   return (
     <main className={`${styles.view} ${styles['view--table']}`}>
