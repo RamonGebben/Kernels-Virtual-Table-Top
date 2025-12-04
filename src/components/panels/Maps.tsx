@@ -62,7 +62,7 @@ const MapsPanel = ({ activeMapId, onSelect }: MapsPanelProps) => {
       <input
         ref={inputRef}
         type="file"
-        accept="image/png, image/jpeg, image/webp"
+        accept="image/png, image/jpeg, image/webp, image/gif"
         onChange={handleChange}
         aria-label="Upload map hidden input"
         style={{ display: 'none' }}

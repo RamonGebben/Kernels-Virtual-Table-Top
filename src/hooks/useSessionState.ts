@@ -11,6 +11,13 @@ import type {
 } from '../../types/messages';
 import { DEFAULT_SESSION, type SessionState } from '../../types/session';
 
+type ConnectionStatus =
+  | 'offline'
+  | 'connecting'
+  | 'connected'
+  | 'stale'
+  | 'reconnecting';
+
 const defaultPort = process.env.NEXT_PUBLIC_WS_PORT || '8081';
 const envWsUrl = process.env.NEXT_PUBLIC_WS_URL;
 
@@ -40,22 +47,34 @@ const safeParseMessage = (data: string): ServerToClientMessage | null => {
  */
 export function useSessionState(role: ClientRole) {
   const [session, setSession] = useState<SessionState>(DEFAULT_SESSION);
-  const [connected, setConnected] = useState(false);
-  const [connectionLost, setConnectionLost] = useState(false);
+  const [connectionStatus, setConnectionStatus] =
+    useState<ConnectionStatus>('connecting');
+  const [connectionLostVisible, setConnectionLostVisible] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPongRef = useRef<number>(0);
+  const connectionLostTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const wsUrl = useMemo(() => buildWsUrl(), []);
 
   useEffect(() => {
-    if (!wsUrl) return undefined;
+    if (!wsUrl) {
+      const t = setTimeout(() => {
+        setConnectionStatus('offline');
+      }, 0);
+      return () => clearTimeout(t);
+    }
 
     // initialize lastPongRef on mount/effect instead of during render
     lastPongRef.current = Date.now();
 
-    const connect = () => {
+    const connect = (reason: 'initial' | 'reconnect' = 'initial') => {
+      setConnectionStatus(
+        reason === 'reconnect' ? 'reconnecting' : 'connecting',
+      );
       if (wsRef.current) {
         wsRef.current.close();
       }
@@ -73,8 +92,7 @@ export function useSessionState(role: ClientRole) {
             type: 'request-session',
           } satisfies ClientToServerMessage),
         );
-        setConnected(true);
-        setConnectionLost(false);
+        setConnectionStatus('connected');
         lastPongRef.current = Date.now();
       });
 
@@ -112,8 +130,7 @@ export function useSessionState(role: ClientRole) {
             break;
           case 'pong':
             lastPongRef.current = Date.now();
-            setConnectionLost(false);
-            setConnected(true);
+            setConnectionStatus('connected');
             break;
           default:
             break;
@@ -121,12 +138,11 @@ export function useSessionState(role: ClientRole) {
       });
 
       ws.addEventListener('close', () => {
-        setConnected(false);
-        setConnectionLost(true);
+        setConnectionStatus('reconnecting');
         if (!reconnectTimer.current) {
           reconnectTimer.current = setTimeout(() => {
             reconnectTimer.current = null;
-            connect();
+            connect('reconnect');
           }, 2000);
         }
       });
@@ -136,7 +152,7 @@ export function useSessionState(role: ClientRole) {
       });
     };
 
-    connect();
+    connect('initial');
 
     heartbeatTimer.current = setInterval(() => {
       const socket = wsRef.current;
@@ -148,9 +164,12 @@ export function useSessionState(role: ClientRole) {
           } satisfies ClientToServerMessage),
         );
       }
-      const stale = Date.now() - lastPongRef.current > 10000;
-      setConnected(!stale);
-      setConnectionLost(stale);
+      const stale = Date.now() - lastPongRef.current > 12000;
+      setConnectionStatus(prev => {
+        if (stale && prev === 'connected') return 'stale';
+        if (!stale && prev === 'stale') return 'connected';
+        return prev;
+      });
     }, 5000);
 
     return () => {
@@ -158,6 +177,7 @@ export function useSessionState(role: ClientRole) {
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
       wsRef.current?.close();
       wsRef.current = null;
+      setConnectionStatus('offline');
     };
   }, [role, wsUrl]);
 
@@ -216,8 +236,38 @@ export function useSessionState(role: ClientRole) {
     [sendMessage],
   );
 
+  useEffect(() => {
+    if (connectionLostTimer.current) {
+      clearTimeout(connectionLostTimer.current);
+      connectionLostTimer.current = null;
+    }
+
+    if (connectionStatus === 'connected') {
+      connectionLostTimer.current = setTimeout(() => {
+        setConnectionLostVisible(false);
+      }, 0);
+      return undefined;
+    }
+
+    connectionLostTimer.current = setTimeout(() => {
+      setConnectionLostVisible(true);
+      connectionLostTimer.current = null;
+    }, 700);
+
+    return () => {
+      if (connectionLostTimer.current) {
+        clearTimeout(connectionLostTimer.current);
+        connectionLostTimer.current = null;
+      }
+    };
+  }, [connectionStatus]);
+
+  const connected = connectionStatus === 'connected';
+  const connectionLost = connectionLostVisible;
+
   return {
     session,
+    connectionStatus,
     connected,
     connectionLost,
     sendMapChange,
