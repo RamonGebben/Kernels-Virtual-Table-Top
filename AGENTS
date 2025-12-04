@@ -11,6 +11,7 @@ Brief context for assistants working in this repo.
 - DM view controls map/artwork selection, grid config (with calibration overlay), grid visibility, and the red lens that drives the Table viewport. Connection banner clears on pong.
 - Table view renders the pushed viewport and optional artwork overlay.
 - Calibration: two clicks set grid size/origin; cursor switches to crosshair when active.
+- Connection status: single state machine (`connecting|connected|stale|reconnecting|offline`) with a 700ms debounce before showing the “connection lost” banner to avoid flicker.
 
 ## Commands
 - App: `npm run dev` (WS URL builds from host/8081 unless `NEXT_PUBLIC_WS_URL` is set).

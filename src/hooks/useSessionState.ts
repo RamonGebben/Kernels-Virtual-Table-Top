@@ -18,6 +18,10 @@ type ConnectionStatus =
   | 'stale'
   | 'reconnecting';
 
+const HEARTBEAT_INTERVAL_MS = 5000;
+const STALE_AFTER_MS = 10000;
+const CONNECTION_LOST_DEBOUNCE_MS = 300;
+
 const defaultPort = process.env.NEXT_PUBLIC_WS_PORT || '8081';
 const envWsUrl = process.env.NEXT_PUBLIC_WS_URL;
 
@@ -164,13 +168,16 @@ export function useSessionState(role: ClientRole) {
           } satisfies ClientToServerMessage),
         );
       }
-      const stale = Date.now() - lastPongRef.current > 12000;
+      const stale = Date.now() - lastPongRef.current >= STALE_AFTER_MS;
       setConnectionStatus(prev => {
         if (stale && prev === 'connected') return 'stale';
         if (!stale && prev === 'stale') return 'connected';
         return prev;
       });
-    }, 5000);
+      if (stale) {
+        setConnectionLostVisible(true);
+      }
+    }, HEARTBEAT_INTERVAL_MS);
 
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
@@ -252,7 +259,7 @@ export function useSessionState(role: ClientRole) {
     connectionLostTimer.current = setTimeout(() => {
       setConnectionLostVisible(true);
       connectionLostTimer.current = null;
-    }, 700);
+    }, CONNECTION_LOST_DEBOUNCE_MS);
 
     return () => {
       if (connectionLostTimer.current) {
