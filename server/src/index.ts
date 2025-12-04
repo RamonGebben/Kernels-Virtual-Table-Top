@@ -17,6 +17,7 @@ type Client = {
   viewport?: ViewportDimensions;
 };
 
+const DEBUG_WS = process.env.DEBUG_WS === 'true';
 const WS_PORT = Number(process.env.WS_PORT ?? 8081);
 
 const httpServer = createServer();
@@ -45,7 +46,9 @@ const handleMessage = async (
   client: Client,
   message: ClientToServerMessage,
 ) => {
-  console.log('Received message:', JSON.stringify(message, null, 2));
+  if (DEBUG_WS) {
+    console.log('WS message:', JSON.stringify(message, null, 2));
+  }
   switch (message.type) {
     case 'client-connected':
       client.role = message.role;
