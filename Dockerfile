@@ -1,9 +1,5 @@
 # syntax=docker/dockerfile:1
 
-ARG HOSTNAME=0.0.0.0
-ARG PORT=3000
-ARG WS_PORT=8081
-
 FROM node:24-alpine AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -17,12 +13,6 @@ RUN cd server && npm ci --no-audit --no-fund
 
 FROM deps AS builder
 COPY . .
-# Propagate port configuration into the build so NEXT_PUBLIC_WS_PORT matches WS_PORT
-ARG PORT
-ARG WS_PORT
-ENV PORT=${PORT}
-ENV WS_PORT=${WS_PORT}
-ENV NEXT_PUBLIC_WS_PORT=${WS_PORT}
 RUN npm run build
 RUN cd server && npm run build
 
@@ -32,14 +22,7 @@ RUN cd server && npm prune --omit=dev
 
 FROM node:24-alpine AS runner
 WORKDIR /app
-ARG HOSTNAME
-ARG PORT
-ARG WS_PORT
 ENV NODE_ENV=production
-ENV HOSTNAME=${HOSTNAME}
-ENV PORT=${PORT}
-ENV WS_PORT=${WS_PORT}
-ENV NEXT_PUBLIC_WS_PORT=${WS_PORT}
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_PATH=/app/node_modules:/app/server/node_modules
 

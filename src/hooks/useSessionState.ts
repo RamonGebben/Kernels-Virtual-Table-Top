@@ -21,16 +21,33 @@ type ConnectionStatus =
 const HEARTBEAT_INTERVAL_MS = 5000;
 const STALE_AFTER_MS = 10000;
 const CONNECTION_LOST_DEBOUNCE_MS = 300;
+const RECONNECT_DELAY_MS = 500;
 
-const defaultPort = process.env.NEXT_PUBLIC_WS_PORT || '8081';
-const envWsUrl = process.env.NEXT_PUBLIC_WS_URL;
+type RuntimeEnv = {
+  WS_PORT?: string;
+};
 
-const buildWsUrl = () => {
-  if (envWsUrl) return envWsUrl;
+const getRuntimeEnv = (): RuntimeEnv => {
+  if (typeof window === 'undefined') return {};
+  return (
+    (window as typeof window & { __KERNEL_ENV__?: RuntimeEnv })
+      .__KERNEL_ENV__ || {}
+  );
+};
+
+const resolveWsUrl = () => {
+  const runtimeEnv = getRuntimeEnv();
+  const defaultPort =
+    runtimeEnv.WS_PORT || process.env.NEXT_PUBLIC_WS_PORT || '8081';
+
   if (typeof window === 'undefined') return '';
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const host = window.location.hostname;
   return `${protocol}://${host}:${defaultPort}`;
+};
+
+const buildWsUrl = () => {
+  return resolveWsUrl();
 };
 
 const safeParseMessage = (data: string): ServerToClientMessage | null => {
@@ -147,7 +164,7 @@ export function useSessionState(role: ClientRole) {
           reconnectTimer.current = setTimeout(() => {
             reconnectTimer.current = null;
             connect('reconnect');
-          }, 2000);
+          }, RECONNECT_DELAY_MS);
         }
       });
 

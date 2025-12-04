@@ -3,6 +3,12 @@ set -eu
 
 mkdir -p /app/maps /app/artworks
 
+cat > /app/public/runtime-env.js <<EOF
+window.__KERNEL_ENV__ = {
+  WS_PORT: "${WS_PORT:-}",
+};
+EOF
+
 node dist/server/src/index.js &
 WS_PID=$!
 

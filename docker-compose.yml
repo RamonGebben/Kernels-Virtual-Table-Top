@@ -5,10 +5,10 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000" # Next app
-      - "8081:8081" # WebSocket server
+      - "8099:8099" # WebSocket server
     environment:
       PORT: 3000
-      WS_PORT: 8081
+      WS_PORT: 8099
     volumes:
       - ./maps:/app/maps
       - ./artwork:/app/artworks
