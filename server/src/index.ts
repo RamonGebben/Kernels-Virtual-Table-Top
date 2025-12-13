@@ -120,6 +120,13 @@ const handleMessage = async (
         client.socket,
       );
       break;
+    case 'improved-initiative-settings':
+      sessionState = { ...sessionState, improvedInitiative: message.settings };
+      broadcast(
+        { type: 'improved-initiative-settings', settings: message.settings },
+        client.socket,
+      );
+      break;
     case 'lock-viewport':
       sessionState = { ...sessionState, locked: message.locked };
       broadcast(

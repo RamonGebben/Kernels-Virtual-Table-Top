@@ -16,9 +16,7 @@ vi.mock('./Artwork', () => ({
 }));
 
 vi.mock('./Settings', () => ({
-  default: ({ gridSize }: { gridSize: number }) => (
-    <div>Settings Panel {gridSize}</div>
-  ),
+  default: (props: { gridSize: number }) => <div>Settings Panel {props.gridSize}</div>,
 }));
 
 const baseProps = {
@@ -32,6 +30,16 @@ const baseProps = {
   onGridColorChange: vi.fn(),
   onBackgroundColorChange: vi.fn(),
   onToggleGrid: vi.fn(),
+  onStartCalibration: vi.fn(),
+  calibrationActive: false,
+  improvedInitiative: {
+    enabled: false,
+    sessionId: '',
+    location: 'top-right' as const,
+    size: 'medium' as const,
+    opacity: 0.75,
+  },
+  onImprovedInitiativeChange: vi.fn(),
 };
 
 describe('Panel', () => {

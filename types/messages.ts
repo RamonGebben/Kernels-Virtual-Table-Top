@@ -59,6 +59,10 @@ export type ClientToServerMessage =
       type: 'artwork-display';
       artwork?: MapDescriptor | null;
     }
+  | {
+      type: 'improved-initiative-settings';
+      settings: import('./session.js').ImprovedInitiativeSettings;
+    }
   | { type: 'lock-viewport'; locked: boolean }
   | { type: 'ping'; timestamp: number };
 
@@ -99,6 +103,10 @@ export type ServerToClientMessage =
   | {
       type: 'artwork-display';
       artwork?: MapDescriptor | null;
+    }
+  | {
+      type: 'improved-initiative-settings';
+      settings: import('./session.js').ImprovedInitiativeSettings;
     }
   | { type: 'lock-viewport'; locked: boolean }
   | { type: 'pong'; timestamp: number };

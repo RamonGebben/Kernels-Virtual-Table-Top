@@ -10,6 +10,23 @@ export const BLANK_MAP: MapDescriptor = {
   filename: '',
 };
 
+export type TrackerLocation =
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
+
+export type TrackerSize = 'small' | 'medium' | 'large';
+
+export interface ImprovedInitiativeSettings {
+  enabled: boolean;
+  sessionId: string;
+  location: TrackerLocation;
+  size: TrackerSize;
+  opacity: number;
+  height?: number | null;
+}
+
 export interface SessionState {
   grid: GridSettings;
   map: MapDescriptor;
@@ -18,6 +35,7 @@ export interface SessionState {
   viewport?: ViewportState;
   tableViewport?: ViewportState;
   tableSize?: ViewportDimensions;
+  improvedInitiative?: ImprovedInitiativeSettings;
 }
 
 export const DEFAULT_SESSION: SessionState = {
@@ -41,4 +59,12 @@ export const DEFAULT_SESSION: SessionState = {
   },
   tableSize: { width: 1920, height: 1080 },
   artwork: null,
+  improvedInitiative: {
+    enabled: false,
+    sessionId: '',
+    location: 'top-right',
+    size: 'medium',
+    opacity: 0.75,
+    height: null,
+  },
 };

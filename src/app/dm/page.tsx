@@ -13,6 +13,7 @@ import ViewportCanvas from '@/components/canvas/ViewportCanvas';
 import styles from '../views.module.css';
 import { useSessionState } from '@/hooks/useSessionState';
 import type { MapDescriptor } from '../../../types/messages';
+import { DEFAULT_SESSION, type SessionState } from '../../../types/session';
 import MapIcon from '@/components/icons/MapIcon';
 import ArtworkIcon from '@/components/icons/ArtworkIcon';
 import SettingsIcon from '@/components/icons/SettingsIcon';
@@ -29,6 +30,7 @@ const DMPageInner = () => {
     sendTableViewportChange,
     sendArtworkDisplay,
     connectionLost,
+    sendImprovedInitiativeSettings,
   } = useSessionState('dm');
   const canvasKey = useMemo(() => session.map.id, [session.map.id]);
   const [calibrationActive, setCalibrationActive] = useAtom(
@@ -48,6 +50,8 @@ const DMPageInner = () => {
   const [activePanel, setActivePanel] = useAtom(activePanelAtom);
   const previousOpacityRef = useRef<number | null>(null);
   const canvasBg = session.grid.backgroundColor ?? '#0c0d11';
+  const improvedInitiative =
+    session.improvedInitiative ?? DEFAULT_SESSION.improvedInitiative!;
 
   const handleSelect = useCallback(
     (map: MapDescriptor) => {
@@ -84,6 +88,18 @@ const DMPageInner = () => {
       sendGridUpdate({ ...session.grid, backgroundColor: value });
     },
     [sendGridUpdate, session.grid],
+  );
+
+  const handleImprovedInitiativeChange = useCallback(
+    (
+      update: Partial<NonNullable<SessionState['improvedInitiative']>>,
+    ) => {
+      const base =
+        session.improvedInitiative ?? DEFAULT_SESSION.improvedInitiative!;
+      const next = { ...base, ...update };
+      sendImprovedInitiativeSettings(next);
+    },
+    [sendImprovedInitiativeSettings, session.improvedInitiative],
   );
 
   const handleCalibrateClick = useCallback(
@@ -268,6 +284,8 @@ const DMPageInner = () => {
                   }
                 }}
                 calibrationActive={calibrationActive}
+                improvedInitiative={improvedInitiative}
+                onImprovedInitiativeChange={handleImprovedInitiativeChange}
               />
             </div>
           </>
