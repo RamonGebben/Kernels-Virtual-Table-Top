@@ -2,6 +2,7 @@
 
 import type { PanelKey } from '@/state';
 import type { MapDescriptor } from '../../../types/messages';
+import type { SessionState } from '../../../types/session';
 import ArtworkPanel from './Artwork';
 import MapsPanel from './Maps';
 import SettingsPanel from './Settings';
@@ -22,6 +23,10 @@ interface PanelProps {
   onToggleGrid: () => void;
   onStartCalibration: () => void;
   calibrationActive: boolean;
+  improvedInitiative: NonNullable<SessionState['improvedInitiative']>;
+  onImprovedInitiativeChange: (
+    settings: Partial<NonNullable<SessionState['improvedInitiative']>>,
+  ) => void;
 }
 
 const Panel = ({
@@ -40,6 +45,8 @@ const Panel = ({
   onToggleGrid,
   onStartCalibration,
   calibrationActive,
+  improvedInitiative,
+  onImprovedInitiativeChange,
 }: PanelProps) => {
   switch (activePanel) {
     case 'maps':
@@ -64,6 +71,8 @@ const Panel = ({
           onToggleGrid={onToggleGrid}
           onStartCalibration={onStartCalibration}
           calibrationActive={calibrationActive}
+          improvedInitiative={improvedInitiative}
+          onImprovedInitiativeChange={onImprovedInitiativeChange}
         />
       );
     default:

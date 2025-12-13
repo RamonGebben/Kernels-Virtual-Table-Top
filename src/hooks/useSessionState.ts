@@ -143,14 +143,17 @@ export function useSessionState(role: ClientRole) {
           case 'artwork-display':
             setSession(prev => ({ ...prev, artwork: msg.artwork }));
             break;
-          case 'lock-viewport':
-            setSession(prev => ({ ...prev, locked: msg.locked }));
-            break;
-          case 'viewport-change':
-            setSession(prev => ({ ...prev, viewport: msg.viewport }));
-            break;
-          case 'pong':
-            lastPongRef.current = Date.now();
+      case 'lock-viewport':
+        setSession(prev => ({ ...prev, locked: msg.locked }));
+        break;
+      case 'improved-initiative-settings':
+        setSession(prev => ({ ...prev, improvedInitiative: msg.settings }));
+        break;
+      case 'viewport-change':
+        setSession(prev => ({ ...prev, viewport: msg.viewport }));
+        break;
+      case 'pong':
+        lastPongRef.current = Date.now();
             setConnectionStatus('connected');
             break;
           default:
@@ -260,6 +263,14 @@ export function useSessionState(role: ClientRole) {
     [sendMessage],
   );
 
+  const sendImprovedInitiativeSettings = useCallback(
+    (settings: SessionState['improvedInitiative']) => {
+      setSession(prev => ({ ...prev, improvedInitiative: settings }));
+      sendMessage({ type: 'improved-initiative-settings', settings });
+    },
+    [sendMessage],
+  );
+
   useEffect(() => {
     if (connectionLostTimer.current) {
       clearTimeout(connectionLostTimer.current);
@@ -300,6 +311,7 @@ export function useSessionState(role: ClientRole) {
     sendTableViewportChange,
     sendTableSize,
     sendArtworkDisplay,
+    sendImprovedInitiativeSettings,
   };
 }
 
