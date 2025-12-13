@@ -264,7 +264,7 @@ export function useSessionState(role: ClientRole) {
   );
 
   const sendImprovedInitiativeSettings = useCallback(
-    (settings: SessionState['improvedInitiative']) => {
+    (settings: NonNullable<SessionState['improvedInitiative']>) => {
       setSession(prev => ({ ...prev, improvedInitiative: settings }));
       sendMessage({ type: 'improved-initiative-settings', settings });
     },

@@ -30,15 +30,19 @@ const TablePage = () => {
   const trackerWidth = embedWidth;
   const trackerHeight = embedHeight;
 
-  const trackerStyle: CSSProperties = {
-    opacity: tracker.opacity,
-  };
   const trackerWidthVar = '--tracker-width' as const;
   const trackerHeightVar = '--tracker-height' as const;
   const trackerScaleVar = '--tracker-scale' as const;
-  trackerStyle[trackerWidthVar] = `${trackerWidth}px`;
-  trackerStyle[trackerHeightVar] = `${trackerHeight}px`;
-  trackerStyle[trackerScaleVar] = '1';
+  const trackerStyle: CSSProperties &
+    Record<
+      typeof trackerWidthVar | typeof trackerHeightVar | typeof trackerScaleVar,
+      string
+    > = {
+    opacity: tracker.opacity,
+    [trackerWidthVar]: `${trackerWidth}px`,
+    [trackerHeightVar]: `${trackerHeight}px`,
+    [trackerScaleVar]: '1',
+  };
 
   const trackerEmbedStyle: CSSProperties = {
     width: `${embedWidth}px`,
