@@ -17,6 +17,8 @@ const contentTypeFor = (filename: string) => {
       return 'image/jpeg';
     case '.webp':
       return 'image/webp';
+    case '.webm':
+      return 'video/webm';
     default:
       return 'application/octet-stream';
   }
@@ -52,13 +54,32 @@ export async function GET(
     });
   }
 
-  const stream = createReadStream(filePath);
-  const headers = new Headers();
-  headers.set('Content-Type', contentTypeFor(filename));
-  headers.set('Content-Length', fileStat.size.toString());
+  const contentType = contentTypeFor(filename);
 
+  const range = _request.headers.get('range');
+  if (range) {
+    const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(startStr, 10);
+    const end = endStr ? parseInt(endStr, 10) : fileStat.size - 1;
+    const stream = createReadStream(filePath, { start, end });
+    return new NextResponse(stream as unknown as BodyInit, {
+      status: 206,
+      headers: {
+        'Content-Range': `bytes ${start}-${end}/${fileStat.size}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': String(end - start + 1),
+        'Content-Type': contentType,
+      },
+    });
+  }
+
+  const stream = createReadStream(filePath);
   return new NextResponse(stream as unknown as BodyInit, {
     status: 200,
-    headers,
+    headers: {
+      'Content-Type': contentType,
+      'Content-Length': fileStat.size.toString(),
+      'Accept-Ranges': 'bytes',
+    },
   });
 }

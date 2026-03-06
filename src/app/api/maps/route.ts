@@ -14,10 +14,10 @@ const ensureMapsDir = async () => {
   await mkdir(MAPS_DIR, { recursive: true });
 };
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+const MAP_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.webm']);
 
-const isImageFile = (filename: string) =>
-  IMAGE_EXTENSIONS.has(path.extname(filename).toLowerCase());
+const isMapFile = (filename: string) =>
+  MAP_EXTENSIONS.has(path.extname(filename).toLowerCase());
 
 const toEntry = (
   filename: string,
@@ -46,7 +46,7 @@ export async function GET() {
   for (const filename of entries) {
     const fullPath = path.join(MAPS_DIR, filename);
     const fileStat = await stat(fullPath);
-    if (!fileStat.isFile() || !isImageFile(filename)) continue;
+    if (!fileStat.isFile() || !isMapFile(filename)) continue;
     maps.push({
       ...toEntry(filename, fileStat),
       grid: metadata[filename]?.grid,

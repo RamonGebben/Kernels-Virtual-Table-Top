@@ -19,6 +19,14 @@ const Thumbnail = ({ src, alt, className, blankClassName }: ThumbnailProps) => {
     );
   }
 
+  if (src.toLowerCase().endsWith('.webm')) {
+    return (
+      <div className={className}>
+        <video src={src} autoPlay muted loop playsInline />
+      </div>
+    );
+  }
+
   return (
     <div className={className}>
       {/* eslint-disable-next-line @next/next/no-img-element */}

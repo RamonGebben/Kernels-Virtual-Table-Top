@@ -159,6 +159,7 @@ export const ViewportCanvas = ({
 }: Props) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const mapKeyRef = useRef<string | null>(null);
 
   // State refs
@@ -332,10 +333,12 @@ export const ViewportCanvas = ({
 
       const currentViewport = viewportRef.current ?? { x: 0, y: 0, zoom: 1 };
       const currentMapWidth =
+        videoRef.current?.videoWidth ??
         imageRef.current?.naturalWidth ??
         map.width ??
         mapSizeRef.current.width;
       const currentMapHeight =
+        videoRef.current?.videoHeight ??
         imageRef.current?.naturalHeight ??
         map.height ??
         mapSizeRef.current.height;
@@ -354,12 +357,13 @@ export const ViewportCanvas = ({
       ctx.fillStyle = backgroundColor ?? DEFAULT_BACKGROUND;
       ctx.fillRect(0, 0, rect.width, rect.height);
 
-      const img = imageRef.current;
+      const mediaEl: HTMLImageElement | HTMLVideoElement | null =
+        videoRef.current ?? imageRef.current;
       ctx.save();
       ctx.scale(currentViewport.zoom, currentViewport.zoom);
       ctx.translate(-currentViewport.x, -currentViewport.y);
-      if (img) {
-        ctx.drawImage(img, 0, 0);
+      if (mediaEl) {
+        ctx.drawImage(mediaEl, 0, 0);
       }
       if (gridVisibleRef.current) {
         drawGrid(ctx, currentViewport, rect.width, rect.height, grid);
@@ -483,6 +487,11 @@ export const ViewportCanvas = ({
       }
 
       ctx.restore();
+
+      // Keep re-drawing while video is playing
+      if (videoRef.current && !videoRef.current.paused) {
+        scheduleDraw();
+      }
     };
 
     drawRef.current = drawScene;
@@ -522,10 +531,11 @@ export const ViewportCanvas = ({
     };
   }, [scheduleDraw]);
 
-  // Image loading
+  // Image/video loading
   useEffect(() => {
     if (!mapUrl || map.id === BLANK_MAP_ID) {
       imageRef.current = null;
+      videoRef.current = null;
       mapKeyRef.current = map.id;
       mapSizeRef.current = {
         width: map.width ?? 1920,
@@ -538,49 +548,89 @@ export const ViewportCanvas = ({
 
     const key = map.id ?? map.filename;
     mapKeyRef.current = key;
-    const img = new Image();
-    img.onload = () => {
-      if (mapKeyRef.current !== key) return;
-      imageRef.current = img;
-      mapSizeRef.current = {
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-      };
-      fogDirtyRef.current = true;
-      if (canvasRef.current) {
-        const rect = canvasRectRef.current;
-        const fitZoom = Math.min(
-          rect.width / img.naturalWidth,
-          rect.height / img.naturalHeight,
-        );
-        const initialZoom = viewportRef.current?.zoom ?? fitZoom;
-        const viewWidth = rect.width / initialZoom;
-        const viewHeight = rect.height / initialZoom;
-        const centered: ViewportState = {
-          x: (img.naturalWidth - viewWidth) / 2,
-          y: (img.naturalHeight - viewHeight) / 2,
-          zoom: initialZoom,
+    const isVideo = /\.webm$/i.test(map.filename ?? '');
+
+    if (isVideo) {
+      const video = document.createElement('video');
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.addEventListener('loadedmetadata', () => {
+        if (mapKeyRef.current !== key) return;
+        imageRef.current = null;
+        videoRef.current = video;
+        mapSizeRef.current = { width: video.videoWidth, height: video.videoHeight };
+        fogDirtyRef.current = true;
+        if (canvasRef.current) {
+          const rect = canvasRectRef.current;
+          const fitZoom = Math.min(
+            rect.width / video.videoWidth,
+            rect.height / video.videoHeight,
+          );
+          const initialZoom = viewportRef.current?.zoom ?? fitZoom;
+          const viewWidth = rect.width / initialZoom;
+          const viewHeight = rect.height / initialZoom;
+          const centered: ViewportState = {
+            x: (video.videoWidth - viewWidth) / 2,
+            y: (video.videoHeight - viewHeight) / 2,
+            zoom: initialZoom,
+          };
+          viewportRef.current = centered;
+          onViewportChangeRef.current?.(centered);
+        }
+        video.play().catch(() => {});
+        scheduleDraw();
+      });
+      video.src = mapUrl;
+    } else {
+      const img = new Image();
+      img.onload = () => {
+        if (mapKeyRef.current !== key) return;
+        imageRef.current = img;
+        mapSizeRef.current = {
+          width: img.naturalWidth,
+          height: img.naturalHeight,
         };
-        viewportRef.current = centered;
-        onViewportChangeRef.current?.(centered);
-      }
-      scheduleDraw();
-    };
-    img.onerror = () => {
-      if (mapKeyRef.current !== key) return;
-      imageRef.current = null;
-      mapSizeRef.current = {
-        width: map.width ?? 1920,
-        height: map.height ?? 1080,
+        fogDirtyRef.current = true;
+        if (canvasRef.current) {
+          const rect = canvasRectRef.current;
+          const fitZoom = Math.min(
+            rect.width / img.naturalWidth,
+            rect.height / img.naturalHeight,
+          );
+          const initialZoom = viewportRef.current?.zoom ?? fitZoom;
+          const viewWidth = rect.width / initialZoom;
+          const viewHeight = rect.height / initialZoom;
+          const centered: ViewportState = {
+            x: (img.naturalWidth - viewWidth) / 2,
+            y: (img.naturalHeight - viewHeight) / 2,
+            zoom: initialZoom,
+          };
+          viewportRef.current = centered;
+          onViewportChangeRef.current?.(centered);
+        }
+        scheduleDraw();
       };
-      fogDirtyRef.current = true;
-      scheduleDraw();
-    };
-    img.src = mapUrl;
+      img.onerror = () => {
+        if (mapKeyRef.current !== key) return;
+        imageRef.current = null;
+        mapSizeRef.current = {
+          width: map.width ?? 1920,
+          height: map.height ?? 1080,
+        };
+        fogDirtyRef.current = true;
+        scheduleDraw();
+      };
+      img.src = mapUrl;
+    }
 
     return () => {
       if (mapKeyRef.current === key) {
         mapKeyRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current = null;
       }
     };
   }, [map.id, map.filename, map.width, map.height, mapUrl, scheduleDraw]);
