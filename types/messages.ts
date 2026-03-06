@@ -63,6 +63,7 @@ export type ClientToServerMessage =
       type: 'improved-initiative-settings';
       settings: import('./session.js').ImprovedInitiativeSettings;
     }
+  | { type: 'fog-update'; update: import('./session.js').FogUpdate }
   | { type: 'lock-viewport'; locked: boolean }
   | { type: 'ping'; timestamp: number };
 
@@ -108,5 +109,6 @@ export type ServerToClientMessage =
       type: 'improved-initiative-settings';
       settings: import('./session.js').ImprovedInitiativeSettings;
     }
+  | { type: 'fog-update'; update: import('./session.js').FogUpdate }
   | { type: 'lock-viewport'; locked: boolean }
   | { type: 'pong'; timestamp: number };

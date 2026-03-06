@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import ViewportCanvas from '@/components/canvas/ViewportCanvas';
 import styles from '../views.module.css';
@@ -29,6 +29,14 @@ const TablePage = () => {
   const embedHeight = baseHeight * sizeScale;
   const trackerWidth = embedWidth;
   const trackerHeight = embedHeight;
+  const fog = useMemo(
+    () => ({
+      ...DEFAULT_SESSION.fog!,
+      ...(session.fog ?? {}),
+      strokes: session.fog?.strokes ?? DEFAULT_SESSION.fog!.strokes,
+    }),
+    [session.fog],
+  );
 
   const trackerWidthVar = '--tracker-width' as const;
   const trackerHeightVar = '--tracker-height' as const;
@@ -104,6 +112,8 @@ const TablePage = () => {
         map={session.map}
         viewport={session.tableViewport}
         className={`${styles.view__canvas} ${styles['view__canvas--table']}`}
+        fog={fog}
+        fogOpacityOverride={fog.opacityTable}
         backgroundColor={session.grid.backgroundColor ?? '#111217'}
       />
     </main>

@@ -7,6 +7,12 @@ import type {
   ViewportState,
 } from '../../../types/messages';
 import { BLANK_MAP_ID } from '../../../types/session';
+import type {
+  FogBrushShape,
+  FogState,
+  FogStroke,
+  FogStrokeMode,
+} from '../../../types/session';
 
 type Props = {
   grid: GridSettings;
@@ -25,6 +31,16 @@ type Props = {
   lensSize?: { width: number; height: number } | null;
   onLensChange?: (viewport: ViewportState) => void;
   gridVisible?: boolean;
+  fog?: FogState;
+  fogOpacityOverride?: number;
+  fogTool?: {
+    enabled: boolean;
+    mode: FogStrokeMode;
+    shape: FogBrushShape;
+    size: number; // radius in map pixels
+    softness: number; // 0-1 feathering
+  };
+  onFogStrokeBatch?: (strokes: FogStroke[]) => void;
 };
 
 const DEFAULT_BACKGROUND = '#0f1014';
@@ -72,6 +88,49 @@ const drawGrid = (
   ctx.restore();
 };
 
+const makeStrokeId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const drawFogStroke = (ctx: CanvasRenderingContext2D, stroke: FogStroke) => {
+  ctx.save();
+  ctx.globalCompositeOperation =
+    stroke.mode === 'reveal' ? 'destination-out' : 'source-over';
+
+  if (stroke.shape === 'circle') {
+    const innerRadius = Math.max(
+      0,
+      stroke.radius * Math.max(0, 1 - stroke.softness),
+    );
+    const gradient = ctx.createRadialGradient(
+      stroke.x,
+      stroke.y,
+      innerRadius,
+      stroke.x,
+      stroke.y,
+      stroke.radius,
+    );
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(stroke.x, stroke.y, stroke.radius, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    ctx.fillRect(
+      stroke.x - stroke.radius,
+      stroke.y - stroke.radius,
+      stroke.radius * 2,
+      stroke.radius * 2,
+    );
+  }
+
+  ctx.restore();
+};
+
 /**
  * Renders the tabletop canvas and handles grid drawing, calibration overlays,
  * and table lens interactions without committing to React state on every frame.
@@ -93,6 +152,10 @@ export const ViewportCanvas = ({
   lensViewport,
   lensSize,
   onLensChange,
+  fog,
+  fogOpacityOverride,
+  fogTool,
+  onFogStrokeBatch,
 }: Props) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -106,9 +169,26 @@ export const ViewportCanvas = ({
   const lensSizeRef = useRef<
     { width: number; height: number } | null | undefined
   >(lensSize);
+  const fogRef = useRef<FogState | undefined>(fog);
+  const fogToolRef = useRef<Props['fogTool']>(fogTool);
+  const onFogStrokeBatchRef = useRef<Props['onFogStrokeBatch']>(onFogStrokeBatch);
+  const pendingFogStrokesRef = useRef<FogStroke[]>([]);
+  const fogMaskRef = useRef<HTMLCanvasElement | null>(null);
+  const fogMaskCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const fogDirtyRef = useRef<boolean>(true);
+  const mapSizeRef = useRef<{ width: number; height: number }>({
+    width: 1920,
+    height: 1080,
+  });
+
+  // Cursor tracking for brush preview
+  const cursorMapPosRef = useRef<{ x: number; y: number } | null>(null);
+  const canvasRectRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  const rafIdRef = useRef<number>(0);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   // Interaction refs
-  const dragModeRef = useRef<'dm' | 'lens' | null>(null);
+  const dragModeRef = useRef<'dm' | 'lens' | 'fog' | null>(null);
   const startPointerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const startViewportRef = useRef<ViewportState | null>(null);
   const lensDragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -116,6 +196,13 @@ export const ViewportCanvas = ({
 
   // Callback refs
   const drawRef = useRef<() => void>(() => {});
+  const scheduleDraw = useMemo(() => () => {
+    if (rafIdRef.current !== 0) return;
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = 0;
+      drawRef.current();
+    });
+  }, []);
   const onViewportChangeRef = useRef(onViewportChange);
   const onCalibrateClickRef = useRef(onCalibrateClick);
   const onCalibratePreviewRef = useRef(onCalibratePreview);
@@ -130,6 +217,41 @@ export const ViewportCanvas = ({
     return `/api/maps/${encodeURIComponent(map.filename)}`;
   }, [map]);
 
+  const rebuildFogMask = () => {
+    const fogState = fogRef.current;
+    const { width, height } = mapSizeRef.current;
+    if (!fogState?.enabled || width <= 0 || height <= 0) {
+      fogMaskRef.current = null;
+      fogDirtyRef.current = false;
+      return;
+    }
+
+    let canvas = fogMaskRef.current;
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      fogMaskRef.current = canvas;
+      fogMaskCtxRef.current = canvas.getContext('2d');
+    }
+
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    const ctx = fogMaskCtxRef.current;
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    ctx.fillRect(0, 0, width, height);
+
+    for (const stroke of fogState.strokes) {
+      drawFogStroke(ctx, stroke);
+    }
+
+    fogDirtyRef.current = false;
+  };
+
   // Keep refs in sync with props
   useEffect(() => {
     viewportRef.current = viewport;
@@ -142,6 +264,16 @@ export const ViewportCanvas = ({
   useEffect(() => {
     lensSizeRef.current = lensSize;
   }, [lensSize]);
+
+  useEffect(() => {
+    fogRef.current = fog;
+    fogDirtyRef.current = true;
+    scheduleDraw();
+  }, [fog, scheduleDraw]);
+
+  useEffect(() => {
+    fogToolRef.current = fogTool;
+  }, [fogTool]);
 
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
@@ -160,9 +292,13 @@ export const ViewportCanvas = ({
   }, [onLensChange]);
 
   useEffect(() => {
+    onFogStrokeBatchRef.current = onFogStrokeBatch;
+  }, [onFogStrokeBatch]);
+
+  useEffect(() => {
     // Redraw when external viewport updates (e.g., table viewport pushed from DM).
-    drawRef.current();
-  }, [viewport]);
+    scheduleDraw();
+  }, [viewport, scheduleDraw]);
 
   useEffect(() => {
     calibrationActiveRef.current = !!calibrationActive;
@@ -179,17 +315,41 @@ export const ViewportCanvas = ({
     const drawScene = () => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const ctx = canvas.getContext('2d');
+      if (!ctxRef.current) ctxRef.current = canvas.getContext('2d');
+      const ctx = ctxRef.current;
       if (!ctx) return;
 
-      const rect = canvas.getBoundingClientRect();
+      const rect = canvasRectRef.current;
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      const newW = Math.round(rect.width * dpr);
+      const newH = Math.round(rect.height * dpr);
+      if (canvas.width !== newW || canvas.height !== newH) {
+        canvas.width = newW;
+        canvas.height = newH;
+      }
       ctx.resetTransform();
       ctx.scale(dpr, dpr);
 
       const currentViewport = viewportRef.current ?? { x: 0, y: 0, zoom: 1 };
+      const currentMapWidth =
+        imageRef.current?.naturalWidth ??
+        map.width ??
+        mapSizeRef.current.width;
+      const currentMapHeight =
+        imageRef.current?.naturalHeight ??
+        map.height ??
+        mapSizeRef.current.height;
+
+      if (
+        currentMapWidth !== mapSizeRef.current.width ||
+        currentMapHeight !== mapSizeRef.current.height
+      ) {
+        mapSizeRef.current = {
+          width: currentMapWidth,
+          height: currentMapHeight,
+        };
+        fogDirtyRef.current = true;
+      }
 
       ctx.fillStyle = backgroundColor ?? DEFAULT_BACKGROUND;
       ctx.fillRect(0, 0, rect.width, rect.height);
@@ -203,6 +363,69 @@ export const ViewportCanvas = ({
       }
       if (gridVisibleRef.current) {
         drawGrid(ctx, currentViewport, rect.width, rect.height, grid);
+      }
+
+      if (fogDirtyRef.current) {
+        rebuildFogMask();
+        const pending = pendingFogStrokesRef.current;
+        if (pending.length > 0 && fogMaskCtxRef.current) {
+          for (const s of pending) drawFogStroke(fogMaskCtxRef.current, s);
+        }
+      }
+
+      const fogState = fogRef.current;
+      if (fogState?.enabled && fogMaskRef.current) {
+        ctx.save();
+        ctx.globalAlpha =
+          typeof fogOpacityOverride === 'number'
+            ? fogOpacityOverride
+            : fogState.opacityDm ?? fogState.opacityTable ?? 0.8;
+        ctx.drawImage(fogMaskRef.current, 0, 0);
+        ctx.restore();
+      }
+
+      const fogToolPrev = fogToolRef.current;
+      const cursorPos = cursorMapPosRef.current;
+      if (fogToolPrev?.enabled && cursorPos) {
+        const zoom = currentViewport.zoom || 1;
+        const isReveal = fogToolPrev.mode === 'reveal';
+
+        ctx.save();
+        ctx.strokeStyle = isReveal
+          ? 'rgba(255, 255, 255, 0.85)'
+          : 'rgba(30, 30, 30, 0.85)';
+        ctx.lineWidth = 1.5 / zoom;
+        ctx.setLineDash([4 / zoom, 3 / zoom]);
+
+        if (fogToolPrev.shape === 'circle') {
+          ctx.beginPath();
+          ctx.arc(cursorPos.x, cursorPos.y, fogToolPrev.size, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          ctx.strokeRect(
+            cursorPos.x - fogToolPrev.size,
+            cursorPos.y - fogToolPrev.size,
+            fogToolPrev.size * 2,
+            fogToolPrev.size * 2,
+          );
+        }
+        ctx.setLineDash([]);
+
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = isReveal ? 'rgba(255, 255, 255, 1)' : 'rgba(0, 0, 0, 1)';
+        if (fogToolPrev.shape === 'circle') {
+          ctx.beginPath();
+          ctx.arc(cursorPos.x, cursorPos.y, fogToolPrev.size, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(
+            cursorPos.x - fogToolPrev.size,
+            cursorPos.y - fogToolPrev.size,
+            fogToolPrev.size * 2,
+            fogToolPrev.size * 2,
+          );
+        }
+        ctx.restore();
       }
 
       if (calibrationActiveRef.current && calibrationStartRef.current) {
@@ -270,24 +493,46 @@ export const ViewportCanvas = ({
     calibrationCurrent,
     calibrationStart,
     grid,
+    map,
+    fogOpacityOverride,
   ]);
 
   // Resize handling
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const resizeObserver = new ResizeObserver(() => drawRef.current());
+    const resizeObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        canvasRectRef.current = {
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        };
+      }
+      scheduleDraw();
+    });
     resizeObserver.observe(canvas);
-    drawRef.current();
-    return () => resizeObserver.disconnect();
-  }, []);
+    // Seed initial rect synchronously so the first draw has correct dimensions
+    const initialRect = canvas.getBoundingClientRect();
+    canvasRectRef.current = { width: initialRect.width, height: initialRect.height };
+    scheduleDraw();
+    return () => {
+      resizeObserver.disconnect();
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = 0;
+    };
+  }, [scheduleDraw]);
 
   // Image loading
   useEffect(() => {
     if (!mapUrl || map.id === BLANK_MAP_ID) {
       imageRef.current = null;
       mapKeyRef.current = map.id;
-      drawRef.current();
+      mapSizeRef.current = {
+        width: map.width ?? 1920,
+        height: map.height ?? 1080,
+      };
+      fogDirtyRef.current = true;
+      scheduleDraw();
       return;
     }
 
@@ -297,9 +542,13 @@ export const ViewportCanvas = ({
     img.onload = () => {
       if (mapKeyRef.current !== key) return;
       imageRef.current = img;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
+      mapSizeRef.current = {
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      };
+      fogDirtyRef.current = true;
+      if (canvasRef.current) {
+        const rect = canvasRectRef.current;
         const fitZoom = Math.min(
           rect.width / img.naturalWidth,
           rect.height / img.naturalHeight,
@@ -315,12 +564,17 @@ export const ViewportCanvas = ({
         viewportRef.current = centered;
         onViewportChangeRef.current?.(centered);
       }
-      drawRef.current();
+      scheduleDraw();
     };
     img.onerror = () => {
       if (mapKeyRef.current !== key) return;
       imageRef.current = null;
-      drawRef.current();
+      mapSizeRef.current = {
+        width: map.width ?? 1920,
+        height: map.height ?? 1080,
+      };
+      fogDirtyRef.current = true;
+      scheduleDraw();
     };
     img.src = mapUrl;
 
@@ -329,7 +583,7 @@ export const ViewportCanvas = ({
         mapKeyRef.current = null;
       }
     };
-  }, [map.id, map.filename, mapUrl]);
+  }, [map.id, map.filename, map.width, map.height, mapUrl, scheduleDraw]);
 
   // Interactive controls
   useEffect(() => {
@@ -347,6 +601,25 @@ export const ViewportCanvas = ({
       return { mapX, mapY, cursorX, cursorY, viewport: current };
     };
 
+    const createFogStroke = (
+      mapX: number,
+      mapY: number,
+    ): FogStroke | null => {
+      const tool = fogToolRef.current;
+      if (!tool?.enabled || !fogRef.current?.enabled) return null;
+      const radius = Math.max(2, tool.size);
+      const softness = Math.min(Math.max(tool.softness, 0), 1);
+      return {
+        id: makeStrokeId(),
+        x: mapX,
+        y: mapY,
+        radius,
+        softness,
+        shape: tool.shape,
+        mode: tool.mode,
+      };
+    };
+
     const clampViewport = (vp: ViewportState): ViewportState => vp;
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -356,10 +629,21 @@ export const ViewportCanvas = ({
         return;
       }
 
+      const start = mapPointFromEvent(event);
+      const stroke = createFogStroke(start.mapX, start.mapY);
+      if (stroke) {
+        dragModeRef.current = 'fog';
+        pendingFogStrokesRef.current = [stroke];
+        if (fogMaskCtxRef.current) drawFogStroke(fogMaskCtxRef.current, stroke);
+        scheduleDraw();
+        canvas.setPointerCapture(event.pointerId);
+        return;
+      }
+
       const ls = lensSizeRef.current;
       const lv = lensViewportRef.current;
       if (lv && ls && onLensChangeRef.current) {
-        const { mapX, mapY } = mapPointFromEvent(event);
+        const { mapX, mapY } = start;
         const lensWidth = ls.width / (lv.zoom || 1);
         const lensHeight = ls.height / (lv.zoom || 1);
         const inside =
@@ -383,9 +667,25 @@ export const ViewportCanvas = ({
     };
 
     const handlePointerMove = (event: PointerEvent) => {
+      const { mapX, mapY } = mapPointFromEvent(event);
+      cursorMapPosRef.current = { x: mapX, y: mapY };
+
+      if (fogToolRef.current?.enabled) {
+        scheduleDraw();
+      }
+
       if (calibrationActiveRef.current) {
-        const { mapX, mapY } = mapPointFromEvent(event);
         onCalibratePreviewRef.current?.({ x: mapX, y: mapY });
+        return;
+      }
+
+      if (dragModeRef.current === 'fog') {
+        const stroke = createFogStroke(mapX, mapY);
+        if (stroke) {
+          pendingFogStrokesRef.current.push(stroke);
+          if (fogMaskCtxRef.current) drawFogStroke(fogMaskCtxRef.current, stroke);
+          scheduleDraw();
+        }
         return;
       }
 
@@ -394,7 +694,6 @@ export const ViewportCanvas = ({
         const lvStart = lensViewportStartRef.current;
         const start = lensDragStartRef.current;
         if (!ls || !lvStart || !start || !onLensChangeRef.current) return;
-        const { mapX, mapY } = mapPointFromEvent(event);
         const next: ViewportState = {
           ...lvStart,
           x: lvStart.x + (mapX - start.x),
@@ -402,7 +701,7 @@ export const ViewportCanvas = ({
         };
         lensViewportRef.current = next;
         onLensChangeRef.current(next);
-        drawRef.current();
+        scheduleDraw();
         return;
       }
 
@@ -417,12 +716,19 @@ export const ViewportCanvas = ({
         };
         const clamped = clampViewport(next);
         viewportRef.current = clamped;
-        drawRef.current();
+        scheduleDraw();
         onViewportChangeRef.current?.(clamped);
       }
     };
 
     const handlePointerUp = (event: PointerEvent) => {
+      if (dragModeRef.current === 'fog') {
+        const pending = pendingFogStrokesRef.current;
+        if (pending.length > 0) {
+          onFogStrokeBatchRef.current?.(pending);
+          pendingFogStrokesRef.current = [];
+        }
+      }
       dragModeRef.current = null;
       lensDragStartRef.current = null;
       lensViewportStartRef.current = null;
@@ -470,7 +776,7 @@ export const ViewportCanvas = ({
           };
           lensViewportRef.current = next;
           onLensChangeRef.current(next);
-          drawRef.current();
+          scheduleDraw();
           return;
         }
       }
@@ -492,14 +798,20 @@ export const ViewportCanvas = ({
       };
       const clamped = clampViewport(next);
       viewportRef.current = clamped;
-      drawRef.current();
+      scheduleDraw();
       onViewportChangeRef.current?.(clamped);
+    };
+
+    const handlePointerLeave = () => {
+      cursorMapPosRef.current = null;
+      scheduleDraw();
     };
 
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointermove', handlePointerMove);
     canvas.addEventListener('pointerup', handlePointerUp);
     canvas.addEventListener('pointercancel', handlePointerUp);
+    canvas.addEventListener('pointerleave', handlePointerLeave);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
@@ -507,9 +819,10 @@ export const ViewportCanvas = ({
       canvas.removeEventListener('pointermove', handlePointerMove);
       canvas.removeEventListener('pointerup', handlePointerUp);
       canvas.removeEventListener('pointercancel', handlePointerUp);
+      canvas.removeEventListener('pointerleave', handlePointerLeave);
       canvas.removeEventListener('wheel', handleWheel);
     };
-  }, [interactive]);
+  }, [interactive, scheduleDraw]);
 
   return (
     <canvas

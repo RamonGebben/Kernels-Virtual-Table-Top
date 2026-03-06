@@ -10,6 +10,7 @@ import type {
 import { DEFAULT_SESSION, type SessionState } from '../../types/session.js';
 import { BLANK_MAP_ID } from '../../types/session.js';
 import { getGridForMap, setGridForMap } from '../../src/lib/mapMetadata.js';
+import { applyFogUpdate } from './fogState.js';
 
 type Client = {
   socket: WebSocket;
@@ -104,14 +105,91 @@ const handleMessage = async (
             ...sessionState,
             map: mapWithGrid,
             grid: storedGrid,
+            fog: DEFAULT_SESSION.fog,
           };
           broadcast({ type: 'map-change', map: mapWithGrid }, client.socket);
           broadcast({ type: 'grid-update', grid: storedGrid }, client.socket);
+          broadcast(
+            { type: 'fog-update', update: { kind: 'reset' } },
+            client.socket,
+          );
+          broadcast(
+            {
+              type: 'fog-update',
+              update: {
+                kind: 'toggle',
+                enabled: DEFAULT_SESSION.fog?.enabled ?? false,
+              },
+            },
+            client.socket,
+          );
+          broadcast(
+            {
+              type: 'fog-update',
+              update: {
+                kind: 'set-opacity',
+                view: 'dm',
+                opacity: DEFAULT_SESSION.fog?.opacityDm ?? 0.6,
+              },
+            },
+            client.socket,
+          );
+          broadcast(
+            {
+              type: 'fog-update',
+              update: {
+                kind: 'set-opacity',
+                view: 'table',
+                opacity: DEFAULT_SESSION.fog?.opacityTable ?? 0.9,
+              },
+            },
+            client.socket,
+          );
           break;
         }
       }
-      sessionState = { ...sessionState, map: message.map };
+      sessionState = {
+        ...sessionState,
+        map: message.map,
+        fog: DEFAULT_SESSION.fog,
+      };
       broadcast({ type: 'map-change', map: message.map }, client.socket);
+      broadcast(
+        { type: 'fog-update', update: { kind: 'reset' } },
+        client.socket,
+      );
+      broadcast(
+        {
+          type: 'fog-update',
+          update: {
+            kind: 'toggle',
+            enabled: DEFAULT_SESSION.fog?.enabled ?? false,
+          },
+        },
+        client.socket,
+      );
+      broadcast(
+        {
+          type: 'fog-update',
+          update: {
+            kind: 'set-opacity',
+            view: 'dm',
+            opacity: DEFAULT_SESSION.fog?.opacityDm ?? 0.6,
+          },
+        },
+        client.socket,
+      );
+      broadcast(
+        {
+          type: 'fog-update',
+          update: {
+            kind: 'set-opacity',
+            view: 'table',
+            opacity: DEFAULT_SESSION.fog?.opacityTable ?? 0.9,
+          },
+        },
+        client.socket,
+      );
       break;
     case 'artwork-display':
       sessionState = { ...sessionState, artwork: message.artwork };
@@ -126,6 +204,13 @@ const handleMessage = async (
         { type: 'improved-initiative-settings', settings: message.settings },
         client.socket,
       );
+      break;
+    case 'fog-update':
+      sessionState = {
+        ...sessionState,
+        fog: applyFogUpdate(sessionState.fog, message.update),
+      };
+      broadcast({ type: 'fog-update', update: message.update }, client.socket);
       break;
     case 'lock-viewport':
       sessionState = { ...sessionState, locked: message.locked };

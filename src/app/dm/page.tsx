@@ -13,10 +13,18 @@ import ViewportCanvas from '@/components/canvas/ViewportCanvas';
 import styles from '../views.module.css';
 import { useSessionState } from '@/hooks/useSessionState';
 import type { MapDescriptor } from '../../../types/messages';
-import { DEFAULT_SESSION, type SessionState } from '../../../types/session';
+import {
+  DEFAULT_SESSION,
+  type FogBrushShape,
+  type FogStroke,
+  type FogStrokeMode,
+  type SessionState,
+} from '../../../types/session';
 import MapIcon from '@/components/icons/MapIcon';
 import ArtworkIcon from '@/components/icons/ArtworkIcon';
 import SettingsIcon from '@/components/icons/SettingsIcon';
+import CloudIcon from '@/components/icons/CloudIcon';
+import LightningIcon from '@/components/icons/LightningIcon';
 import ArrowLeftIcon from '@/components/icons/ArrowLeftIcon';
 import Panel from '@/components/panels';
 import { activePanelAtom, calibrationActiveAtom, type PanelKey } from '@/state';
@@ -31,6 +39,7 @@ const DMPageInner = () => {
     sendArtworkDisplay,
     connectionLost,
     sendImprovedInitiativeSettings,
+    sendFogUpdate,
   } = useSessionState('dm');
   const canvasKey = useMemo(() => session.map.id, [session.map.id]);
   const [calibrationActive, setCalibrationActive] = useAtom(
@@ -47,11 +56,27 @@ const DMPageInner = () => {
   const [gridVisible, setGridVisible] = useState<boolean>(
     () => (session.grid.opacity ?? 0.18) > 0,
   );
+  const [fogBrushArmed, setFogBrushArmed] = useState(false);
+  const [fogBrushSize, setFogBrushSize] = useState(140);
+  const [fogBrushSoftness, setFogBrushSoftness] = useState(0.55);
+  const [fogBrushShape, setFogBrushShape] =
+    useState<FogBrushShape>('circle');
+  const [fogBrushMode, setFogBrushMode] =
+    useState<FogStrokeMode>('reveal');
   const [activePanel, setActivePanel] = useAtom(activePanelAtom);
   const previousOpacityRef = useRef<number | null>(null);
   const canvasBg = session.grid.backgroundColor ?? '#0c0d11';
   const improvedInitiative =
     session.improvedInitiative ?? DEFAULT_SESSION.improvedInitiative!;
+  const fog = useMemo(
+    () => ({
+      ...DEFAULT_SESSION.fog!,
+      ...(session.fog ?? {}),
+      strokes: session.fog?.strokes ?? DEFAULT_SESSION.fog!.strokes,
+    }),
+    [session.fog],
+  );
+  const fogBrushActive = fog.enabled && fogBrushArmed;
 
   const handleSelect = useCallback(
     (map: MapDescriptor) => {
@@ -102,6 +127,35 @@ const DMPageInner = () => {
     [sendImprovedInitiativeSettings, session.improvedInitiative],
   );
 
+  const handleFogToggle = useCallback(
+    (enabled: boolean) => {
+      sendFogUpdate({ kind: 'toggle', enabled });
+    },
+    [sendFogUpdate],
+  );
+
+  const handleFogReset = useCallback(() => {
+    sendFogUpdate({ kind: 'reset' });
+  }, [sendFogUpdate]);
+
+  const handleFogRevealAll = useCallback(() => {
+    sendFogUpdate({ kind: 'toggle', enabled: false });
+  }, [sendFogUpdate]);
+
+  const handleFogOpacityChange = useCallback(
+    (view: 'dm' | 'table', opacity: number) => {
+      sendFogUpdate({ kind: 'set-opacity', view, opacity });
+    },
+    [sendFogUpdate],
+  );
+
+  const handleFogStrokeBatch = useCallback(
+    (strokes: FogStroke[]) => {
+      sendFogUpdate({ kind: 'stroke-batch', strokes });
+    },
+    [sendFogUpdate],
+  );
+
   const handleCalibrateClick = useCallback(
     (point: { x: number; y: number }) => {
       if (!calibrationStart) {
@@ -137,6 +191,22 @@ const DMPageInner = () => {
     ],
   );
 
+  const handleFogBrushSizeChange = useCallback((size: number) => {
+    setFogBrushSize(size);
+  }, []);
+
+  const handleFogBrushSoftnessChange = useCallback((softness: number) => {
+    setFogBrushSoftness(softness);
+  }, []);
+
+  const handleFogBrushShapeChange = useCallback((shape: FogBrushShape) => {
+    setFogBrushShape(shape);
+  }, []);
+
+  const handleFogBrushModeChange = useCallback((mode: FogStrokeMode) => {
+    setFogBrushMode(mode);
+  }, []);
+
   useEffect(() => {
     const visible = (session.grid.opacity ?? 0.18) > 0;
     // Defer setState to avoid synchronous state update inside the effect body.
@@ -165,6 +235,26 @@ const DMPageInner = () => {
         label: 'Artwork',
         icon: (
           <ArtworkIcon
+            className={styles.view__icon}
+            style={{ marginLeft: '-4px' }}
+          />
+        ),
+      },
+      {
+        key: 'fog',
+        label: 'Fog',
+        icon: (
+          <CloudIcon
+            className={styles.view__icon}
+            style={{ marginLeft: '-3px' }}
+          />
+        ),
+      },
+      {
+        key: 'initiative',
+        label: 'Initiative',
+        icon: (
+          <LightningIcon
             className={styles.view__icon}
             style={{ marginLeft: '-4px' }}
           />
@@ -286,6 +376,21 @@ const DMPageInner = () => {
                 calibrationActive={calibrationActive}
                 improvedInitiative={improvedInitiative}
                 onImprovedInitiativeChange={handleImprovedInitiativeChange}
+                fog={fog}
+                fogBrushActive={fogBrushActive}
+                fogBrushSize={fogBrushSize}
+                fogBrushSoftness={fogBrushSoftness}
+                fogBrushShape={fogBrushShape}
+                fogBrushMode={fogBrushMode}
+                onFogToggle={handleFogToggle}
+                onFogReset={handleFogReset}
+                onFogRevealAll={handleFogRevealAll}
+                onFogBrushToggle={setFogBrushArmed}
+                onFogBrushSizeChange={handleFogBrushSizeChange}
+                onFogBrushSoftnessChange={handleFogBrushSoftnessChange}
+                onFogBrushShapeChange={handleFogBrushShapeChange}
+                onFogBrushModeChange={handleFogBrushModeChange}
+                onFogOpacityChange={handleFogOpacityChange}
               />
             </div>
           </>
@@ -298,7 +403,7 @@ const DMPageInner = () => {
         key={canvasKey}
         className={`${styles.view__canvas} ${styles['view__canvas--dm']} ${
           calibrationActive ? styles['view__canvas--calibrating'] : ''
-        }`}
+        } ${fogBrushActive ? styles['view__canvas--fog-active'] : ''}`}
         viewport={session.viewport}
         interactive
         onViewportChange={sendViewportChange}
@@ -310,6 +415,16 @@ const DMPageInner = () => {
         lensViewport={session.tableViewport}
         lensSize={session.tableSize ?? { width: 1920, height: 1080 }}
         onLensChange={sendTableViewportChange}
+        fog={fog}
+        fogOpacityOverride={fog.opacityDm}
+        fogTool={{
+          enabled: fogBrushActive,
+          mode: fogBrushMode,
+          shape: fogBrushShape,
+          size: fogBrushSize,
+          softness: fogBrushSoftness,
+        }}
+        onFogStrokeBatch={handleFogStrokeBatch}
         backgroundColor={canvasBg}
       />
     </main>

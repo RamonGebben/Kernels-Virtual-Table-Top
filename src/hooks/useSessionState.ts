@@ -9,7 +9,13 @@ import type {
   GridSettings,
   ViewportDimensions,
 } from '../../types/messages';
-import { DEFAULT_SESSION, type SessionState } from '../../types/session';
+import {
+  DEFAULT_SESSION,
+  type FogState,
+  type FogUpdate,
+  type SessionState,
+} from '../../types/session';
+import { applyFogUpdate } from '../lib/fogState';
 
 type ConnectionStatus =
   | 'offline'
@@ -81,6 +87,17 @@ export function useSessionState(role: ClientRole) {
 
   const wsUrl = useMemo(() => buildWsUrl(), []);
 
+  const ensureFogDefaults = useCallback(
+    (fog?: FogState | null): NonNullable<SessionState['fog']> => {
+      return {
+        ...DEFAULT_SESSION.fog!,
+        ...(fog ?? {}),
+        strokes: fog?.strokes ?? DEFAULT_SESSION.fog!.strokes,
+      };
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!wsUrl) {
       const t = setTimeout(() => {
@@ -122,7 +139,11 @@ export function useSessionState(role: ClientRole) {
         if (!msg) return;
         switch (msg.type) {
           case 'session-state':
-            setSession(msg.session);
+            setSession({
+              ...DEFAULT_SESSION,
+              ...msg.session,
+              fog: ensureFogDefaults(msg.session.fog),
+            });
             break;
           case 'table-size':
             setSession(prev => ({ ...prev, tableSize: msg.size }));
@@ -138,22 +159,29 @@ export function useSessionState(role: ClientRole) {
               ...prev,
               map: msg.map,
               grid: msg.map.grid ?? prev.grid,
+              fog: ensureFogDefaults(DEFAULT_SESSION.fog),
             }));
             break;
           case 'artwork-display':
             setSession(prev => ({ ...prev, artwork: msg.artwork }));
             break;
-      case 'lock-viewport':
-        setSession(prev => ({ ...prev, locked: msg.locked }));
-        break;
-      case 'improved-initiative-settings':
-        setSession(prev => ({ ...prev, improvedInitiative: msg.settings }));
-        break;
-      case 'viewport-change':
-        setSession(prev => ({ ...prev, viewport: msg.viewport }));
-        break;
-      case 'pong':
-        lastPongRef.current = Date.now();
+          case 'lock-viewport':
+            setSession(prev => ({ ...prev, locked: msg.locked }));
+            break;
+          case 'improved-initiative-settings':
+            setSession(prev => ({ ...prev, improvedInitiative: msg.settings }));
+            break;
+          case 'fog-update':
+            setSession(prev => ({
+              ...prev,
+              fog: applyFogUpdate(ensureFogDefaults(prev.fog), msg.update),
+            }));
+            break;
+          case 'viewport-change':
+            setSession(prev => ({ ...prev, viewport: msg.viewport }));
+            break;
+          case 'pong':
+            lastPongRef.current = Date.now();
             setConnectionStatus('connected');
             break;
           default:
@@ -206,7 +234,7 @@ export function useSessionState(role: ClientRole) {
       wsRef.current = null;
       setConnectionStatus('offline');
     };
-  }, [role, wsUrl]);
+  }, [ensureFogDefaults, role, wsUrl]);
 
   const sendMessage = useCallback((message: ClientToServerMessage) => {
     const socket = wsRef.current;
@@ -271,6 +299,17 @@ export function useSessionState(role: ClientRole) {
     [sendMessage],
   );
 
+  const sendFogUpdate = useCallback(
+    (update: FogUpdate) => {
+      setSession(prev => ({
+        ...prev,
+        fog: applyFogUpdate(ensureFogDefaults(prev.fog), update),
+      }));
+      sendMessage({ type: 'fog-update', update });
+    },
+    [ensureFogDefaults, sendMessage],
+  );
+
   useEffect(() => {
     if (connectionLostTimer.current) {
       clearTimeout(connectionLostTimer.current);
@@ -312,6 +351,7 @@ export function useSessionState(role: ClientRole) {
     sendTableSize,
     sendArtworkDisplay,
     sendImprovedInitiativeSettings,
+    sendFogUpdate,
   };
 }
 

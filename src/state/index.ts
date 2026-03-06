@@ -4,7 +4,13 @@ import { atom } from 'jotai';
 import { BLANK_MAP } from '../../types/session';
 import type { MapDescriptor } from '../../types/messages';
 
-export type PanelKey = 'maps' | 'artwork' | 'settings' | null;
+export type PanelKey =
+  | 'maps'
+  | 'artwork'
+  | 'fog'
+  | 'initiative'
+  | 'settings'
+  | null;
 
 export const activePanelAtom = atom<PanelKey>(null);
 

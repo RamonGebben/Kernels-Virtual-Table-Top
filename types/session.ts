@@ -18,6 +18,33 @@ export type TrackerLocation =
 
 export type TrackerSize = 'small' | 'medium' | 'large';
 
+export type FogBrushShape = 'circle' | 'square';
+export type FogStrokeMode = 'reveal' | 'cover';
+
+export interface FogStroke {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  softness: number; // 0 = hard edge, 1 = fully feathered
+  shape: FogBrushShape;
+  mode: FogStrokeMode;
+}
+
+export interface FogState {
+  enabled: boolean;
+  opacityDm: number; // 0-1 overlay darkness for DM view
+  opacityTable: number; // 0-1 overlay darkness for table view
+  strokes: FogStroke[];
+}
+
+export type FogUpdate =
+  | { kind: 'toggle'; enabled: boolean }
+  | { kind: 'reset'; strokes?: FogStroke[] }
+  | { kind: 'stroke'; stroke: FogStroke }
+  | { kind: 'stroke-batch'; strokes: FogStroke[] }
+  | { kind: 'set-opacity'; view: 'dm' | 'table'; opacity: number };
+
 export interface ImprovedInitiativeSettings {
   enabled: boolean;
   sessionId: string;
@@ -36,6 +63,7 @@ export interface SessionState {
   tableViewport?: ViewportState;
   tableSize?: ViewportDimensions;
   improvedInitiative?: ImprovedInitiativeSettings;
+  fog?: FogState;
 }
 
 export const DEFAULT_SESSION: SessionState = {
@@ -66,5 +94,11 @@ export const DEFAULT_SESSION: SessionState = {
     size: 'medium',
     opacity: 0.75,
     height: null,
+  },
+  fog: {
+    enabled: false,
+    opacityDm: 0.6,
+    opacityTable: 0.9,
+    strokes: [],
   },
 };

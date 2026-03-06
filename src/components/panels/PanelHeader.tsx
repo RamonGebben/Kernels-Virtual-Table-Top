@@ -7,13 +7,12 @@ type PanelHeaderProps = {
   actions?: ReactNode;
 };
 
-const PanelHeader = ({ title, actions }: PanelHeaderProps) => (
-  <div className={styles['view__panel-header']}>
-    <span className={styles['view__panel-title']}>{title}</span>
-    {actions ? (
+const PanelHeader = ({ actions }: PanelHeaderProps) => (
+  actions ? (
+    <div className={styles['view__panel-header']}>
       <div className={styles['view__panel-actions']}>{actions}</div>
-    ) : null}
-  </div>
+    </div>
+  ) : null
 );
 
 export default PanelHeader;

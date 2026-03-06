@@ -40,9 +40,13 @@
   cursor: crosshair;
 }
 
+.view__canvas--fog-active {
+  cursor: none;
+}
+
 .view__rail {
   position: absolute;
-  top: 100px;
+  top: 145px;
   left: 16px;
   transform: translateY(-50%);
   display: flex;
@@ -167,17 +171,9 @@
 .view__panel-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   margin-bottom: 12px;
-}
-
-.view__panel-title {
-  font-size: 14px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #b7c4ff;
-  font-weight: 700;
 }
 
 .view__panel-actions {
