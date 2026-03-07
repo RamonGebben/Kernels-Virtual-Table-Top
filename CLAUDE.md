@@ -62,6 +62,7 @@ Pure canvas renderer — avoids React re-renders on every frame by keeping mutab
 - Calibration overlay (dashed rect + dots)
 - Red lens rectangle (the DM's view of the Table viewport)
 - Three pointer drag modes: `'dm'` (pan map), `'lens'` (drag the lens rect), `'fog'` (paint fog strokes)
+- WebM animated maps: pre-fetched as a blob (with canvas progress bar) then animated via `requestVideoFrameCallback` (RAF fallback). Uses a dedicated loop separate from `scheduleDraw` to avoid the dedup guard killing the animation.
 
 ### Fog of War
 `applyFogUpdate` in `src/lib/fogState.ts` is a shared pure reducer used by both the server and client to apply `FogUpdate` variants: `toggle`, `stroke`, `reset`, `set-opacity`. Fog state resets whenever a map changes.
@@ -70,7 +71,18 @@ Pure canvas renderer — avoids React re-renders on every frame by keeping mutab
 `src/app/dm/page.tsx` renders a vertical rail of icon buttons; clicking one opens a sliding drawer. The active panel key (`'maps' | 'artwork' | 'fog' | 'initiative' | 'settings' | null`) is stored in a Jotai atom (`activePanelAtom`). The `Panel` component (`src/components/panels/index.tsx`) renders the correct sub-panel based on the key.
 
 ### Map metadata persistence
-`src/lib/mapMetadata.ts` reads/writes `maps/metadata.json` to persist per-map grid settings across server restarts. The server calls `getGridForMap`/`setGridForMap` on map changes.
+`src/lib/mapMetadata.ts` reads/writes `maps/metadata.json` to persist per-map grid settings across server restarts. The server calls `getGridForMap`/`setGridForMap` on map changes. `updateMetadataKeyPrefix` migrates all keys when a folder is renamed.
+
+### Folder organization
+Maps and artwork support single-level real filesystem folders (subdirectories inside `maps/` and `artwork/`). Key conventions:
+- `MapEntry.path` is the canonical ID: `"file.png"` for root files, `"folder/file.png"` for nested
+- File serving uses catch-all routes `[...path]` (not `[filename]`) — max 2 segments, each validated with `/^[\w.\-\s]+$/`, path.resolve containment check
+- Folder CRUD at `src/app/api/maps/folders/route.ts` and `src/app/api/artwork/folders/route.ts`
+- Folder names validated with `/^[\w\-\s]{1,64}$/` (no dots, no slashes)
+- Dot files (`.gitkeep`, `.DS_Store`) are skipped in all listings
+
+### Context menus
+`src/components/ContextMenu.tsx` renders into `document.body` via React Portal with `position: fixed` coordinates from `getBoundingClientRect()` — never clipped by panel overflow or z-index stacking.
 
 ### Data directories
 `maps/`, `artwork/`, and `maps/metadata.json` are gitignored. The API routes at `src/app/api/maps/` and `src/app/api/artwork/` serve files from these directories.

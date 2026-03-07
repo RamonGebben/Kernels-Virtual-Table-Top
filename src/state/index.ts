@@ -3,6 +3,7 @@
 import { atom } from 'jotai';
 import { BLANK_MAP } from '../../types/session';
 import type { MapDescriptor } from '../../types/messages';
+import type { FolderEntry } from '../../types/maps';
 
 export type PanelKey =
   | 'maps'
@@ -15,13 +16,13 @@ export type PanelKey =
 export const activePanelAtom = atom<PanelKey>(null);
 
 export const mapsAtom = atom<MapDescriptor[]>([BLANK_MAP]);
-
 export const mapsLoadingAtom = atom<boolean>(false);
-
 export const mapsErrorAtom = atom<string | null>(null);
+export const mapFoldersAtom = atom<FolderEntry[]>([]);
 
 export const artworkAtom = atom<MapDescriptor[]>([]);
 export const artworkLoadingAtom = atom<boolean>(false);
 export const artworkErrorAtom = atom<string | null>(null);
+export const artworkFoldersAtom = atom<FolderEntry[]>([]);
 
 export const calibrationActiveAtom = atom<boolean>(false);

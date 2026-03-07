@@ -3,9 +3,10 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 
-const MAPS_DIR = path.join(process.cwd(), 'maps');
+export const runtime = 'nodejs';
 
-const sanitizeFilename = (filename: string) => path.basename(filename);
+const MAPS_DIR = path.join(process.cwd(), 'maps');
+const SEGMENT_REGEX = /^[\w.\-\s\\]+$/;
 
 const contentTypeFor = (filename: string) => {
   const ext = path.extname(filename).toLowerCase();
@@ -25,28 +26,51 @@ const contentTypeFor = (filename: string) => {
 };
 
 export async function GET(
-  _request: NextRequest,
-  context: { params: Promise<{ filename?: string }> },
+  request: NextRequest,
+  context: { params: Promise<{ path?: string[] }> },
 ) {
-  const { filename: rawFilename } = await context.params;
-  if (!rawFilename) {
-    return new NextResponse(JSON.stringify({ error: 'Filename is required' }), {
+  const { path: segments } = await context.params;
+
+  if (!segments || segments.length === 0) {
+    return new NextResponse(JSON.stringify({ error: 'Path is required' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  const filename = sanitizeFilename(rawFilename);
-  const filePath = path.join(MAPS_DIR, filename);
+  if (segments.length > 2) {
+    return new NextResponse(JSON.stringify({ error: 'Path too deep' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
-  if (!existsSync(filePath)) {
+  for (const seg of segments) {
+    if (!SEGMENT_REGEX.test(seg) || seg === '..') {
+      return new NextResponse(JSON.stringify({ error: 'Invalid path segment' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
+  const resolved = path.resolve(path.join(MAPS_DIR, ...segments));
+  const base = path.resolve(MAPS_DIR);
+  if (resolved !== base && !resolved.startsWith(base + path.sep)) {
+    return new NextResponse(JSON.stringify({ error: 'Forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (!existsSync(resolved)) {
     return new NextResponse(JSON.stringify({ error: 'Not found' }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  const fileStat = await stat(filePath);
+  const fileStat = await stat(resolved);
   if (!fileStat.isFile()) {
     return new NextResponse(JSON.stringify({ error: 'Not a file' }), {
       status: 404,
@@ -54,14 +78,15 @@ export async function GET(
     });
   }
 
+  const filename = segments[segments.length - 1];
   const contentType = contentTypeFor(filename);
 
-  const range = _request.headers?.get('range');
+  const range = request.headers?.get('range');
   if (range) {
     const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
     const start = parseInt(startStr, 10);
     const end = endStr ? parseInt(endStr, 10) : fileStat.size - 1;
-    const stream = createReadStream(filePath, { start, end });
+    const stream = createReadStream(resolved, { start, end });
     return new NextResponse(stream as unknown as BodyInit, {
       status: 206,
       headers: {
@@ -73,7 +98,7 @@ export async function GET(
     });
   }
 
-  const stream = createReadStream(filePath);
+  const stream = createReadStream(resolved);
   return new NextResponse(stream as unknown as BodyInit, {
     status: 200,
     headers: {

@@ -6,6 +6,7 @@ import { BLANK_MAP } from '../../types/session';
 const mapEntry = {
   filename: 'forest.png',
   name: 'Forest',
+  path: 'forest.png',
   grid: { size: 50 },
 };
 
@@ -16,7 +17,7 @@ describe('useMaps', () => {
 
   it('refresh loads maps and prepends the blank map', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ maps: [mapEntry] }), { status: 200 }),
+      new Response(JSON.stringify({ maps: [mapEntry], folders: [] }), { status: 200 }),
     );
     const { result } = renderHook(() => useMaps());
 
@@ -53,7 +54,7 @@ describe('useMaps', () => {
   it('uploads a map and keeps blank map at the front', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
-        JSON.stringify({ filename: 'cave.png', name: 'Cave', grid: null }),
+        JSON.stringify({ filename: 'cave.png', name: 'Cave', path: 'cave.png', grid: null }),
         { status: 200 },
       ),
     );

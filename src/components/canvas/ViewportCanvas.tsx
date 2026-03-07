@@ -194,6 +194,9 @@ export const ViewportCanvas = ({
   });
   const rafIdRef = useRef<number>(0);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const videoLoadingRef = useRef<boolean>(false);
+  const videoLoadProgressRef = useRef<number>(0);
+  const videoAnimCancelRef = useRef<(() => void) | null>(null);
 
   // Interaction refs
   const dragModeRef = useRef<'dm' | 'lens' | 'fog' | null>(null);
@@ -225,7 +228,7 @@ export const ViewportCanvas = ({
 
   const mapUrl = useMemo(() => {
     if (!map.filename || map.id === BLANK_MAP_ID) return null;
-    return `/api/maps/${encodeURIComponent(map.filename)}`;
+    return `/api/maps/${map.filename}`;
   }, [map]);
 
   const rebuildFogMask = () => {
@@ -270,10 +273,14 @@ export const ViewportCanvas = ({
 
   useEffect(() => {
     lensViewportRef.current = lensViewport;
+    scheduleDraw();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lensViewport]);
 
   useEffect(() => {
     lensSizeRef.current = lensSize;
+    scheduleDraw();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lensSize]);
 
   useEffect(() => {
@@ -502,10 +509,34 @@ export const ViewportCanvas = ({
 
       ctx.restore();
 
-      // Keep re-drawing while video is playing
-      if (videoRef.current && !videoRef.current.paused) {
-        scheduleDraw();
+      // Loading overlay for videos being fetched
+      if (videoLoadingRef.current) {
+        const progress = videoLoadProgressRef.current;
+        const barW = Math.min(rect.width * 0.5, 280);
+        const barH = 3;
+        const barX = (rect.width - barW) / 2;
+        const barY = rect.height / 2 + 24;
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.font = '13px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+          progress > 0 ? `Loading map… ${Math.round(progress * 100)}%` : 'Loading map…',
+          rect.width / 2,
+          rect.height / 2,
+        );
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.fillRect(barX, barY, barW, barH);
+        if (progress > 0) {
+          ctx.fillStyle = 'rgba(111, 167, 255, 0.85)';
+          ctx.fillRect(barX, barY, barW * progress, barH);
+        }
       }
+
+      // Video animation is driven by its own loop (requestVideoFrameCallback
+      // or a dedicated RAF) started in the image/video loading effect.
     };
 
     drawRef.current = drawScene;
@@ -569,13 +600,14 @@ export const ViewportCanvas = ({
     mapKeyRef.current = key;
     const isVideo = /\.webm$/i.test(map.filename ?? '');
 
-    if (isVideo) {
-      const video = document.createElement('video');
-      video.muted = true;
-      video.playsInline = true;
+    let abortController: AbortController | null = null;
+    let blobUrl = '';
 
-      const centerAndDraw = (w: number, h: number) => {
+    if (isVideo) {
+      const centerAndDraw = (video: HTMLVideoElement) => {
         if (mapKeyRef.current !== key) return;
+        const w = video.videoWidth;
+        const h = video.videoHeight;
         mapSizeRef.current = { width: w, height: h };
         fogDirtyRef.current = true;
         if (canvasRef.current) {
@@ -595,32 +627,111 @@ export const ViewportCanvas = ({
         scheduleDraw();
       };
 
-      if (staticVideo) {
-        video.addEventListener('loadeddata', () => {
-          if (mapKeyRef.current !== key) return;
-          const w = video.videoWidth;
-          const h = video.videoHeight;
-          const offscreen = document.createElement('canvas');
-          offscreen.width = w;
-          offscreen.height = h;
-          offscreen.getContext('2d')?.drawImage(video, 0, 0);
-          staticFrameRef.current = offscreen;
-          imageRef.current = null;
-          videoRef.current = null;
-          centerAndDraw(w, h);
-        });
-      } else {
-        video.loop = true;
-        video.addEventListener('loadedmetadata', () => {
-          if (mapKeyRef.current !== key) return;
-          imageRef.current = null;
-          videoRef.current = video;
-          centerAndDraw(video.videoWidth, video.videoHeight);
-          video.play().catch(() => {});
-        });
-      }
+      // Fetch the whole video as a blob so the browser never stalls mid-playback.
+      // Progress is tracked so the canvas can show a loading bar.
+      videoLoadingRef.current = true;
+      videoLoadProgressRef.current = 0;
+      scheduleDraw();
 
-      video.src = mapUrl;
+      abortController = new AbortController();
+
+      const fetchBlob = async () => {
+        const res = await fetch(mapUrl, { signal: abortController!.signal });
+        const contentLength = res.headers.get('Content-Length');
+        const total = contentLength ? parseInt(contentLength, 10) : 0;
+
+        let blob: Blob;
+        if (total > 0 && res.body) {
+          const reader = res.body.getReader();
+          const chunks: Uint8Array<ArrayBuffer>[] = [];
+          let loaded = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            loaded += value.byteLength;
+            videoLoadProgressRef.current = loaded / total;
+            scheduleDraw();
+          }
+          blob = new Blob(chunks, { type: 'video/webm' });
+        } else {
+          blob = await res.blob();
+        }
+
+        if (mapKeyRef.current !== key) return;
+
+        blobUrl = URL.createObjectURL(blob);
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+
+        if (staticVideo) {
+          video.addEventListener('loadeddata', () => {
+            if (mapKeyRef.current !== key) return;
+            const offscreen = document.createElement('canvas');
+            offscreen.width = video.videoWidth;
+            offscreen.height = video.videoHeight;
+            offscreen.getContext('2d')?.drawImage(video, 0, 0);
+            staticFrameRef.current = offscreen;
+            imageRef.current = null;
+            videoRef.current = null;
+            videoLoadingRef.current = false;
+            centerAndDraw(video);
+          });
+        } else {
+          video.loop = true;
+          video.addEventListener('loadedmetadata', () => {
+            if (mapKeyRef.current !== key) return;
+            imageRef.current = null;
+            videoRef.current = video;
+            videoLoadingRef.current = false;
+            centerAndDraw(video);
+            video.play().catch(() => {});
+
+            // Drive canvas redraws frame-by-frame using requestVideoFrameCallback
+            // when available (fires exactly once per decoded video frame), falling
+            // back to a plain RAF loop. This is independent of scheduleDraw so the
+            // dedup guard can never accidentally starve the video loop.
+            videoAnimCancelRef.current?.();
+            if ('requestVideoFrameCallback' in video) {
+              let rvfcId = 0;
+              const onFrame = () => {
+                if (videoRef.current !== video) return;
+                drawRef.current();
+                rvfcId = (video as HTMLVideoElement & {
+                  requestVideoFrameCallback: (cb: () => void) => number;
+                }).requestVideoFrameCallback(onFrame);
+              };
+              rvfcId = (video as HTMLVideoElement & {
+                requestVideoFrameCallback: (cb: () => void) => number;
+              }).requestVideoFrameCallback(onFrame);
+              videoAnimCancelRef.current = () => {
+                (video as HTMLVideoElement & {
+                  cancelVideoFrameCallback: (id: number) => void;
+                }).cancelVideoFrameCallback(rvfcId);
+              };
+            } else {
+              let active = true;
+              const tick = () => {
+                if (!active || videoRef.current !== video) return;
+                drawRef.current();
+                requestAnimationFrame(tick);
+              };
+              requestAnimationFrame(tick);
+              videoAnimCancelRef.current = () => { active = false; };
+            }
+          });
+        }
+
+        video.src = blobUrl;
+      };
+
+      fetchBlob().catch(() => {
+        if (mapKeyRef.current === key) {
+          videoLoadingRef.current = false;
+          scheduleDraw();
+        }
+      });
     } else {
       const img = new Image();
       img.onload = () => {
@@ -666,6 +777,13 @@ export const ViewportCanvas = ({
     return () => {
       if (mapKeyRef.current === key) {
         mapKeyRef.current = null;
+      }
+      if (isVideo) {
+        abortController?.abort();
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        videoLoadingRef.current = false;
+        videoAnimCancelRef.current?.();
+        videoAnimCancelRef.current = null;
       }
       if (videoRef.current) {
         videoRef.current.pause();
