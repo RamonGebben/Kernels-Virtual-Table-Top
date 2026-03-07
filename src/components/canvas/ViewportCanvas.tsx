@@ -33,6 +33,7 @@ type Props = {
   gridVisible?: boolean;
   fog?: FogState;
   fogOpacityOverride?: number;
+  staticVideo?: boolean;
   fogTool?: {
     enabled: boolean;
     mode: FogStrokeMode;
@@ -154,12 +155,14 @@ export const ViewportCanvas = ({
   onLensChange,
   fog,
   fogOpacityOverride,
+  staticVideo,
   fogTool,
   onFogStrokeBatch,
 }: Props) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const staticFrameRef = useRef<HTMLCanvasElement | null>(null);
   const mapKeyRef = useRef<string | null>(null);
 
   // State refs
@@ -334,11 +337,13 @@ export const ViewportCanvas = ({
       const currentViewport = viewportRef.current ?? { x: 0, y: 0, zoom: 1 };
       const currentMapWidth =
         videoRef.current?.videoWidth ??
+        staticFrameRef.current?.width ??
         imageRef.current?.naturalWidth ??
         map.width ??
         mapSizeRef.current.width;
       const currentMapHeight =
         videoRef.current?.videoHeight ??
+        staticFrameRef.current?.height ??
         imageRef.current?.naturalHeight ??
         map.height ??
         mapSizeRef.current.height;
@@ -357,8 +362,8 @@ export const ViewportCanvas = ({
       ctx.fillStyle = backgroundColor ?? DEFAULT_BACKGROUND;
       ctx.fillRect(0, 0, rect.width, rect.height);
 
-      const mediaEl: HTMLImageElement | HTMLVideoElement | null =
-        videoRef.current ?? imageRef.current;
+      const mediaEl: CanvasImageSource | null =
+        videoRef.current ?? staticFrameRef.current ?? imageRef.current;
       ctx.save();
       ctx.scale(currentViewport.zoom, currentViewport.zoom);
       ctx.translate(-currentViewport.x, -currentViewport.y);
@@ -536,6 +541,7 @@ export const ViewportCanvas = ({
     if (!mapUrl || map.id === BLANK_MAP_ID) {
       imageRef.current = null;
       videoRef.current = null;
+      staticFrameRef.current = null;
       mapKeyRef.current = map.id;
       mapSizeRef.current = {
         width: map.width ?? 1920,
@@ -553,34 +559,54 @@ export const ViewportCanvas = ({
     if (isVideo) {
       const video = document.createElement('video');
       video.muted = true;
-      video.loop = true;
       video.playsInline = true;
-      video.addEventListener('loadedmetadata', () => {
+
+      const centerAndDraw = (w: number, h: number) => {
         if (mapKeyRef.current !== key) return;
-        imageRef.current = null;
-        videoRef.current = video;
-        mapSizeRef.current = { width: video.videoWidth, height: video.videoHeight };
+        mapSizeRef.current = { width: w, height: h };
         fogDirtyRef.current = true;
         if (canvasRef.current) {
           const rect = canvasRectRef.current;
-          const fitZoom = Math.min(
-            rect.width / video.videoWidth,
-            rect.height / video.videoHeight,
-          );
+          const fitZoom = Math.min(rect.width / w, rect.height / h);
           const initialZoom = viewportRef.current?.zoom ?? fitZoom;
           const viewWidth = rect.width / initialZoom;
           const viewHeight = rect.height / initialZoom;
           const centered: ViewportState = {
-            x: (video.videoWidth - viewWidth) / 2,
-            y: (video.videoHeight - viewHeight) / 2,
+            x: (w - viewWidth) / 2,
+            y: (h - viewHeight) / 2,
             zoom: initialZoom,
           };
           viewportRef.current = centered;
           onViewportChangeRef.current?.(centered);
         }
-        video.play().catch(() => {});
         scheduleDraw();
-      });
+      };
+
+      if (staticVideo) {
+        video.addEventListener('loadeddata', () => {
+          if (mapKeyRef.current !== key) return;
+          const w = video.videoWidth;
+          const h = video.videoHeight;
+          const offscreen = document.createElement('canvas');
+          offscreen.width = w;
+          offscreen.height = h;
+          offscreen.getContext('2d')?.drawImage(video, 0, 0);
+          staticFrameRef.current = offscreen;
+          imageRef.current = null;
+          videoRef.current = null;
+          centerAndDraw(w, h);
+        });
+      } else {
+        video.loop = true;
+        video.addEventListener('loadedmetadata', () => {
+          if (mapKeyRef.current !== key) return;
+          imageRef.current = null;
+          videoRef.current = video;
+          centerAndDraw(video.videoWidth, video.videoHeight);
+          video.play().catch(() => {});
+        });
+      }
+
       video.src = mapUrl;
     } else {
       const img = new Image();
@@ -632,8 +658,9 @@ export const ViewportCanvas = ({
         videoRef.current.pause();
         videoRef.current = null;
       }
+      staticFrameRef.current = null;
     };
-  }, [map.id, map.filename, map.width, map.height, mapUrl, scheduleDraw]);
+  }, [map.id, map.filename, map.width, map.height, mapUrl, scheduleDraw, staticVideo]);
 
   // Interactive controls
   useEffect(() => {

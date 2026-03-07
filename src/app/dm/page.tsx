@@ -417,6 +417,7 @@ const DMPageInner = () => {
         onLensChange={sendTableViewportChange}
         fog={fog}
         fogOpacityOverride={fog.opacityDm}
+        staticVideo
         fogTool={{
           enabled: fogBrushActive,
           mode: fogBrushMode,
