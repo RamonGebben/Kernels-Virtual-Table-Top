@@ -64,6 +64,7 @@ describe('/api/artwork route handlers', () => {
 
     expect(payload.maps.map(map => map.filename)).toContain('painting.png');
     expect(payload.maps.map(map => map.filename)).not.toContain('notes.txt');
+    expect(Array.isArray(payload.folders)).toBe(true);
   });
 
   it('stores uploaded artwork and returns an entry', async () => {
@@ -84,6 +85,7 @@ describe('/api/artwork route handlers', () => {
     const payload = (await response.json()) as MapEntry;
 
     expect(payload.filename).toBe('portrait.png');
+    expect(payload.path).toBe('portrait.png');
     const uploaded = await stat(path.join(tmpDir, 'artwork', 'portrait.png'));
     expect(uploaded.isFile()).toBe(true);
   });
@@ -96,7 +98,7 @@ describe('/api/artwork route handlers', () => {
     const { DELETE } = await importRoute();
     const request = new Request('http://localhost/api/artwork', {
       method: 'DELETE',
-      body: JSON.stringify({ filename: 'portrait.png' }),
+      body: JSON.stringify({ path: 'portrait.png' }),
     });
 
     const response = await DELETE(request as any);

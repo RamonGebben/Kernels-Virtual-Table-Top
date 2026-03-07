@@ -9,7 +9,7 @@ const importRoute = async () => {
   return import('./route');
 };
 
-describe('GET /api/artwork/[filename]', () => {
+describe('GET /api/artwork/[...path]', () => {
   let tmpDir: string;
   let cwdSpy: ReturnType<typeof vi.spyOn>;
 
@@ -24,13 +24,13 @@ describe('GET /api/artwork/[filename]', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('streams artwork file with correct mime type', async () => {
+  it('streams a root artwork file with correct mime type', async () => {
     const filePath = path.join(tmpDir, 'artwork', 'portrait.jpg');
     await writeFile(filePath, 'jpeg-bytes');
 
     const { GET } = await importRoute();
     const response = await GET({} as NextRequest, {
-      params: Promise.resolve({ filename: 'portrait.jpg' }),
+      params: Promise.resolve({ path: ['portrait.jpg'] }),
     });
 
     expect(response.status).toBe(200);
@@ -39,19 +39,35 @@ describe('GET /api/artwork/[filename]', () => {
     expect(body).toBe('jpeg-bytes');
   });
 
+  it('streams a file inside a subfolder', async () => {
+    const subDir = path.join(tmpDir, 'artwork', 'tokens');
+    await mkdir(subDir, { recursive: true });
+    await writeFile(path.join(subDir, 'hero.png'), 'png-bytes');
+
+    const { GET } = await importRoute();
+    const response = await GET({} as NextRequest, {
+      params: Promise.resolve({ path: ['tokens', 'hero.png'] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/png');
+    const body = await response.text();
+    expect(body).toBe('png-bytes');
+  });
+
   it('returns 404 for missing artwork files', async () => {
     const { GET } = await importRoute();
     const response = await GET({} as NextRequest, {
-      params: Promise.resolve({ filename: 'missing.png' }),
+      params: Promise.resolve({ path: ['missing.png'] }),
     });
 
     expect(response.status).toBe(404);
   });
 
-  it('returns 400 when filename param is absent', async () => {
+  it('returns 400 when path is absent', async () => {
     const { GET } = await importRoute();
     const response = await GET({} as NextRequest, {
-      params: Promise.resolve({ filename: undefined as unknown as string }),
+      params: Promise.resolve({ path: undefined }),
     });
 
     expect(response.status).toBe(400);

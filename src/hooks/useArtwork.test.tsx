@@ -5,6 +5,7 @@ import { useArtwork } from './useArtwork';
 const artworkEntry = {
   filename: 'painting.png',
   name: 'Painting',
+  path: 'painting.png',
 };
 
 describe('useArtwork', () => {
@@ -14,7 +15,7 @@ describe('useArtwork', () => {
 
   it('refresh loads artwork entries', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ maps: [artworkEntry] }), { status: 200 }),
+      new Response(JSON.stringify({ maps: [artworkEntry], folders: [] }), { status: 200 }),
     );
 
     const { result } = renderHook(() => useArtwork());
@@ -49,7 +50,7 @@ describe('useArtwork', () => {
   it('uploads artwork and prepends it to the list', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
-        JSON.stringify({ filename: 'portrait.png', name: 'Portrait' }),
+        JSON.stringify({ filename: 'portrait.png', name: 'Portrait', path: 'portrait.png' }),
         { status: 200 },
       ),
     );

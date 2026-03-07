@@ -9,7 +9,7 @@ const importRoute = async () => {
   return import('./route');
 };
 
-describe('GET /api/maps/[filename]', () => {
+describe('GET /api/maps/[...path]', () => {
   let tmpDir: string;
   let cwdSpy: ReturnType<typeof vi.spyOn>;
 
@@ -24,13 +24,13 @@ describe('GET /api/maps/[filename]', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('streams the requested map file with content type', async () => {
+  it('streams a root map file with correct content type', async () => {
     const filePath = path.join(tmpDir, 'maps', 'forest.png');
     await writeFile(filePath, 'image-bytes');
 
     const { GET } = await importRoute();
     const response = await GET({} as NextRequest, {
-      params: Promise.resolve({ filename: 'forest.png' }),
+      params: Promise.resolve({ path: ['forest.png'] }),
     });
 
     expect(response.status).toBe(200);
@@ -39,19 +39,44 @@ describe('GET /api/maps/[filename]', () => {
     expect(body).toBe('image-bytes');
   });
 
+  it('streams a file inside a subfolder', async () => {
+    const subDir = path.join(tmpDir, 'maps', 'dungeons');
+    await mkdir(subDir, { recursive: true });
+    await writeFile(path.join(subDir, 'cave.jpg'), 'jpeg-bytes');
+
+    const { GET } = await importRoute();
+    const response = await GET({} as NextRequest, {
+      params: Promise.resolve({ path: ['dungeons', 'cave.jpg'] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/jpeg');
+    const body = await response.text();
+    expect(body).toBe('jpeg-bytes');
+  });
+
   it('returns 404 for missing files', async () => {
     const { GET } = await importRoute();
     const response = await GET({} as NextRequest, {
-      params: Promise.resolve({ filename: 'missing.png' }),
+      params: Promise.resolve({ path: ['missing.png'] }),
     });
 
     expect(response.status).toBe(404);
   });
 
-  it('returns 400 when filename is omitted', async () => {
+  it('returns 400 when path is omitted', async () => {
     const { GET } = await importRoute();
     const response = await GET({} as NextRequest, {
-      params: Promise.resolve({ filename: undefined }),
+      params: Promise.resolve({ path: undefined }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 for paths deeper than 2 segments', async () => {
+    const { GET } = await importRoute();
+    const response = await GET({} as NextRequest, {
+      params: Promise.resolve({ path: ['a', 'b', 'c.png'] }),
     });
 
     expect(response.status).toBe(400);

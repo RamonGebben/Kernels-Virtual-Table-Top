@@ -330,7 +330,8 @@
   flex-shrink: 0;
 }
 
-.view__thumb img {
+.view__thumb img,
+.view__thumb video {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -533,6 +534,101 @@
 
 .view__tracker--large {
   --tracker-scale: 1.16;
+}
+
+.view__folder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  width: 100%;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.view__folder-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.view__menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.view__menu {
+  background: rgba(22, 24, 32, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  min-width: 140px;
+  overflow: hidden;
+}
+
+.view__menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  text-align: left;
+  font-size: 13px;
+  color: #f4f4f5;
+  cursor: pointer;
+  background: transparent;
+  transition: background 80ms ease;
+}
+
+.view__menu-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.view__menu-item--danger {
+  color: rgba(255, 110, 110, 0.9);
+}
+
+.view__menu-item:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.view__menu-label {
+  padding: 6px 14px 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.38);
+  font-weight: 700;
+}
+
+.view__inline-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.view__icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 14px;
+  color: #f4f4f5;
+  flex-shrink: 0;
+  transition: background 80ms ease;
+}
+
+.view__icon-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 @media (max-width: 640px) {

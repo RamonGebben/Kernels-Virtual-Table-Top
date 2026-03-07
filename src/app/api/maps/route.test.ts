@@ -76,8 +76,10 @@ describe('/api/maps route handlers', () => {
     const ignored = payload.maps.find(map => map.filename === 'notes.txt');
 
     expect(entry?.name).toBe('forest');
+    expect(entry?.path).toBe('forest.png');
     expect(entry?.grid?.size).toBe(42);
     expect(ignored).toBeUndefined();
+    expect(Array.isArray(payload.folders)).toBe(true);
   });
 
   it('stores uploaded maps and returns an entry', async () => {
@@ -98,6 +100,7 @@ describe('/api/maps route handlers', () => {
     const payload = (await response.json()) as MapEntry;
 
     expect(payload.filename).toBe('cave.png');
+    expect(payload.path).toBe('cave.png');
     const uploaded = await stat(path.join(tmpDir, 'maps', 'cave.png'));
     expect(uploaded.isFile()).toBe(true);
   });
@@ -114,7 +117,7 @@ describe('/api/maps route handlers', () => {
     const { DELETE } = await importRoute();
     const request = new Request('http://localhost/api/maps', {
       method: 'DELETE',
-      body: JSON.stringify({ filename: 'forest.png' }),
+      body: JSON.stringify({ path: 'forest.png' }),
     });
 
     const response = await DELETE(request as any);

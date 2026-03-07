@@ -56,10 +56,27 @@ export const setGridForMap = async (filename: string, grid: GridSettings) => {
   await writeMetadata(metadata);
 };
 
-export const removeMetadataForMap = async (filename: string) => {
+export const removeMetadataForMap = async (mapPath: string) => {
   const metadata = await readMetadata();
-  if (metadata[filename]) {
-    delete metadata[filename];
+  if (metadata[mapPath]) {
+    delete metadata[mapPath];
     await writeMetadata(metadata);
   }
+};
+
+export const updateMetadataKeyPrefix = async (
+  oldPrefix: string,
+  newPrefix: string,
+) => {
+  const metadata = await readMetadata();
+  const updated: MapMetadata = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (key.startsWith(oldPrefix + '/')) {
+      const filename = key.slice(oldPrefix.length + 1);
+      updated[`${newPrefix}/${filename}`] = value;
+    } else {
+      updated[key] = value;
+    }
+  }
+  await writeMetadata(updated);
 };
