@@ -56,7 +56,7 @@ export async function GET(
 
   const contentType = contentTypeFor(filename);
 
-  const range = _request.headers.get('range');
+  const range = _request.headers?.get('range');
   if (range) {
     const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
     const start = parseInt(startStr, 10);

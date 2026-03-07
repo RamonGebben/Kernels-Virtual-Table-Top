@@ -175,7 +175,8 @@ export const ViewportCanvas = ({
   >(lensSize);
   const fogRef = useRef<FogState | undefined>(fog);
   const fogToolRef = useRef<Props['fogTool']>(fogTool);
-  const onFogStrokeBatchRef = useRef<Props['onFogStrokeBatch']>(onFogStrokeBatch);
+  const onFogStrokeBatchRef =
+    useRef<Props['onFogStrokeBatch']>(onFogStrokeBatch);
   const pendingFogStrokesRef = useRef<FogStroke[]>([]);
   const fogMaskRef = useRef<HTMLCanvasElement | null>(null);
   const fogMaskCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -187,7 +188,10 @@ export const ViewportCanvas = ({
 
   // Cursor tracking for brush preview
   const cursorMapPosRef = useRef<{ x: number; y: number } | null>(null);
-  const canvasRectRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  const canvasRectRef = useRef<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
   const rafIdRef = useRef<number>(0);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
@@ -200,13 +204,16 @@ export const ViewportCanvas = ({
 
   // Callback refs
   const drawRef = useRef<() => void>(() => {});
-  const scheduleDraw = useMemo(() => () => {
-    if (rafIdRef.current !== 0) return;
-    rafIdRef.current = requestAnimationFrame(() => {
-      rafIdRef.current = 0;
-      drawRef.current();
-    });
-  }, []);
+  const scheduleDraw = useMemo(
+    () => () => {
+      if (rafIdRef.current !== 0) return;
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = 0;
+        drawRef.current();
+      });
+    },
+    [],
+  );
   const onViewportChangeRef = useRef(onViewportChange);
   const onCalibrateClickRef = useRef(onCalibrateClick);
   const onCalibratePreviewRef = useRef(onCalibratePreview);
@@ -388,7 +395,7 @@ export const ViewportCanvas = ({
         ctx.globalAlpha =
           typeof fogOpacityOverride === 'number'
             ? fogOpacityOverride
-            : fogState.opacityDm ?? fogState.opacityTable ?? 0.8;
+            : (fogState.opacityDm ?? fogState.opacityTable ?? 0.8);
         ctx.drawImage(fogMaskRef.current, 0, 0);
         ctx.restore();
       }
@@ -421,7 +428,9 @@ export const ViewportCanvas = ({
         ctx.setLineDash([]);
 
         ctx.globalAlpha = 0.12;
-        ctx.fillStyle = isReveal ? 'rgba(255, 255, 255, 1)' : 'rgba(0, 0, 0, 1)';
+        ctx.fillStyle = isReveal
+          ? 'rgba(255, 255, 255, 1)'
+          : 'rgba(0, 0, 0, 1)';
         if (fogToolPrev.shape === 'circle') {
           ctx.beginPath();
           ctx.arc(cursorPos.x, cursorPos.y, fogToolPrev.size, 0, Math.PI * 2);
@@ -509,6 +518,7 @@ export const ViewportCanvas = ({
     grid,
     map,
     fogOpacityOverride,
+    scheduleDraw,
   ]);
 
   // Resize handling
@@ -527,7 +537,10 @@ export const ViewportCanvas = ({
     resizeObserver.observe(canvas);
     // Seed initial rect synchronously so the first draw has correct dimensions
     const initialRect = canvas.getBoundingClientRect();
-    canvasRectRef.current = { width: initialRect.width, height: initialRect.height };
+    canvasRectRef.current = {
+      width: initialRect.width,
+      height: initialRect.height,
+    };
     scheduleDraw();
     return () => {
       resizeObserver.disconnect();
@@ -660,7 +673,15 @@ export const ViewportCanvas = ({
       }
       staticFrameRef.current = null;
     };
-  }, [map.id, map.filename, map.width, map.height, mapUrl, scheduleDraw, staticVideo]);
+  }, [
+    map.id,
+    map.filename,
+    map.width,
+    map.height,
+    mapUrl,
+    scheduleDraw,
+    staticVideo,
+  ]);
 
   // Interactive controls
   useEffect(() => {
@@ -678,10 +699,7 @@ export const ViewportCanvas = ({
       return { mapX, mapY, cursorX, cursorY, viewport: current };
     };
 
-    const createFogStroke = (
-      mapX: number,
-      mapY: number,
-    ): FogStroke | null => {
+    const createFogStroke = (mapX: number, mapY: number): FogStroke | null => {
       const tool = fogToolRef.current;
       if (!tool?.enabled || !fogRef.current?.enabled) return null;
       const radius = Math.max(2, tool.size);
@@ -760,7 +778,8 @@ export const ViewportCanvas = ({
         const stroke = createFogStroke(mapX, mapY);
         if (stroke) {
           pendingFogStrokesRef.current.push(stroke);
-          if (fogMaskCtxRef.current) drawFogStroke(fogMaskCtxRef.current, stroke);
+          if (fogMaskCtxRef.current)
+            drawFogStroke(fogMaskCtxRef.current, stroke);
           scheduleDraw();
         }
         return;
