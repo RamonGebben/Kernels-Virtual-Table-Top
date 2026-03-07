@@ -12,5 +12,5 @@
     "skipLibCheck": true
   },
   "include": ["src", "../types", "../src/lib"],
-  "exclude": ["**/*.test.*", "../src/**/*.test.*"]
+  "exclude": ["**/*.test.*", "../src/**/*.test.*", "../src/lib/fogState.ts"]
 }
